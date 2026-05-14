@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Electron builder cache
+.cache/
+
+# Mac system files
+.DS_Store
+**/.DS_Store
+
+# Windows system files
+Thumbs.db
+Desktop.ini
+
+# User config and session data (stays on user's machine)
+~/.claude-buddy/
+
+# Environment files (never commit secrets)
+.env
+.env.local
+.env.*
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor folders
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp

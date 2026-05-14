@@ -1,0 +1,64 @@
+{
+  "name": "nano-bot",
+  "version": "1.0.0",
+  "description": "A floating desktop companion that watches your Claude/Codex sessions and surfaces blindspots novice builders don't know to ask about.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder --mac --win --linux"
+  },
+  "keywords": ["claude", "ai", "assistant", "developer-tools", "electron"],
+  "author": "dhwanip9",
+  "license": "MIT",
+  "dependencies": {
+    "anthropic": "^0.39.0",
+    "electron-updater": "^6.3.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.dhwanip9.nanobot",
+    "productName": "NanoBot",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "blindspots.v2.json",
+      "assets/**/*"
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "dhwanip9",
+      "repo": "nano-bot"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.icns",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ]
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": ["nsis"]
+    },
+    "linux": {
+      "icon": "assets/icon.png",
+      "target": ["AppImage", "deb"]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false
+    }
+  }
+}

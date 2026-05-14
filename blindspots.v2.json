@@ -1,0 +1,1856 @@
+{
+  "version": "2.0.0",
+  "description": "Claude Buddy blindspot knowledge base v2 — triggers, nudges, explanations, and handoff prompts for novice builders",
+  "changelog": [
+    "Removed duplicate priority field from all categories (severity is canonical)",
+    "Split absence_signals into regex_absent and llm_check per category",
+    "Added template_variables schema with source and fallback to all handoff templates",
+    "Added resolved_signals to all categories so Buddy stops nudging when concern is addressed",
+    "Added related_categories links between connected blindspots",
+    "Fixed nudge cap logic: cap is now per-severity, critical nudges are never silenced",
+    "Raised session summarization token limit from 150 to 350",
+    "Added 6 new categories: rate_limiting, cors_and_environment, version_control, cost_and_billing, legal_and_compliance, race_conditions",
+    "Added 4 new project type profiles: chatbot, automation, browser_extension, cli_tool"
+  ],
+  "categories": [
+    {
+      "id": "data_persistence",
+      "name": "Data persistence",
+      "description": "Whether the app remembers anything between sessions",
+      "severity": "critical",
+      "phase": "architecture",
+      "related_categories": [
+        "backup_and_recovery",
+        "multi_user_auth"
+      ],
+      "triggers": {
+        "keywords": [
+          "tracker",
+          "log",
+          "save",
+          "record",
+          "history",
+          "entries",
+          "add",
+          "store",
+          "keep track",
+          "remember",
+          "list",
+          "submit",
+          "collect"
+        ],
+        "code_patterns": [
+          "let entries",
+          "const data",
+          "var list",
+          "\\.push\\(",
+          "innerHTML \\+?=",
+          "innerText ="
+        ],
+        "regex_absent": [
+          "localStorage",
+          "indexedDB",
+          "fetch\\(",
+          "axios",
+          "supabase",
+          "firebase",
+          "mongo",
+          "postgres",
+          "sqlite",
+          "\\.json'"
+        ],
+        "llm_check": [
+          "Does the generated code store any user data only in JavaScript variables or arrays with no persistence mechanism?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "localStorage\\.setItem",
+          "fetch\\(.*POST",
+          "supabase\\.from",
+          "firebase\\.set",
+          "\\.save\\(",
+          "INSERT INTO"
+        ],
+        "llm_check": [
+          "Has the user confirmed a storage solution or asked how to add one?"
+        ]
+      },
+      "nudge": "You've described adding or saving things — where does that information live when you close the tab or restart your computer?",
+      "explanation": {
+        "plain": "Right now your app is like a whiteboard — the moment you close it, everything on it disappears. For anything that tracks, logs, or stores information, you need a way to write it down somewhere permanent.",
+        "analogy": "Think of it like taking notes on a sticky note vs. saving a document. The sticky note is gone when you close the window.",
+        "options": [
+          {
+            "label": "Just me, one device",
+            "solution": "localStorage — simple, free, built into every browser, no setup needed"
+          },
+          {
+            "label": "Me across devices",
+            "solution": "A simple cloud database like Firebase or Supabase — free tiers available"
+          },
+          {
+            "label": "Multiple people",
+            "solution": "A shared database — everyone reads and writes to the same place"
+          }
+        ],
+        "follow_up_question": "Will this just be you on one device, or do you need to access it from multiple places?"
+      },
+      "handoff_prompt_template": "I'm building {project}. Right now the data disappears when I close the browser. I need help adding a way to save {data_type} permanently so that {use_case}. Please suggest the simplest option for someone who is not a developer and explain how to add it to my existing code.",
+      "template_variables": {
+        "project": {
+          "source": "session_context.project_description",
+          "fallback": "my app"
+        },
+        "data_type": {
+          "source": "session_context.data_being_stored",
+          "fallback": "my data"
+        },
+        "use_case": {
+          "source": "user_reply",
+          "fallback": "I can access it next time I open the app"
+        }
+      }
+    },
+    {
+      "id": "multi_user_auth",
+      "name": "Authentication and multi-user access",
+      "description": "Whether different people need different access to the app",
+      "severity": "critical",
+      "phase": "architecture",
+      "related_categories": [
+        "sensitive_data",
+        "data_persistence",
+        "race_conditions"
+      ],
+      "triggers": {
+        "keywords": [
+          "my partner",
+          "my team",
+          "my family",
+          "share with",
+          "multiple people",
+          "other users",
+          "login",
+          "sign in",
+          "account",
+          "colleagues",
+          "staff",
+          "patients",
+          "clients",
+          "friends"
+        ],
+        "code_patterns": [
+          "userId",
+          "user_id",
+          "currentUser",
+          "getUser",
+          "session\\["
+        ],
+        "regex_absent": [
+          "auth",
+          "login",
+          "signin",
+          "jwt",
+          "oauth",
+          "clerk",
+          "supabase\\.auth",
+          "firebase\\.auth"
+        ],
+        "llm_check": [
+          "Does the app assume a single user with no way to distinguish between different people's data?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "supabase\\.auth",
+          "firebase\\.auth",
+          "clerk",
+          "nextauth",
+          "jwt\\.sign",
+          "bcrypt",
+          "login",
+          "logout"
+        ],
+        "llm_check": [
+          "Has the user confirmed they only need a single-user app or explicitly chosen an auth solution?"
+        ]
+      },
+      "nudge": "You mentioned multiple people using this — how will the app know who is who, and make sure each person only sees their own data?",
+      "explanation": {
+        "plain": "If two people use the same app with no login system, they'd both see the same data — or worse, one could accidentally overwrite the other's. Authentication is just a fancy word for 'the app knows who you are.'",
+        "analogy": "It's like a shared Google Doc where anyone with the link can edit everything. Sometimes that's fine. But if this is a medication tracker, you probably want each person's data separate.",
+        "options": [
+          {
+            "label": "One shared view for everyone",
+            "solution": "No auth needed — simpler but everyone sees everything"
+          },
+          {
+            "label": "Each person has their own account",
+            "solution": "Use a service like Firebase Auth, Supabase Auth, or Clerk — they handle this without you building it from scratch"
+          },
+          {
+            "label": "One password for everyone",
+            "solution": "A simple shared password — not secure for sensitive data but works for low-stakes tools"
+          }
+        ],
+        "follow_up_question": "Should each person have their own private view, or is a shared view okay?"
+      },
+      "handoff_prompt_template": "I'm building {project} and {number_of_users} need to use it. I need help adding a simple login system so each person has their own account and can only see their own data. I am not a developer — please suggest the easiest way to do this and walk me through it step by step.",
+      "template_variables": {
+        "project": {
+          "source": "session_context.project_description",
+          "fallback": "my app"
+        },
+        "number_of_users": {
+          "source": "session_context.user_count",
+          "fallback": "multiple people"
+        }
+      }
+    },
+    {
+      "id": "destructive_commands",
+      "name": "Destructive operations",
+      "description": "Commands that delete, overwrite, or irreversibly modify files or data",
+      "severity": "critical",
+      "phase": "execution",
+      "related_categories": [
+        "backup_and_recovery",
+        "version_control"
+      ],
+      "triggers": {
+        "keywords": [
+          "delete",
+          "remove",
+          "clean up",
+          "overwrite",
+          "replace file",
+          "rewrite the file",
+          "clear",
+          "reset",
+          "drop",
+          "truncate",
+          "wipe"
+        ],
+        "code_patterns": [
+          "rm ",
+          "rm -rf",
+          "awk '.*'\\s*>",
+          "sed -i",
+          "DROP TABLE",
+          "DELETE FROM",
+          ">[^>]",
+          "fs\\.unlinkSync",
+          "os\\.remove",
+          "shutil\\.rmtree",
+          ":>\\s"
+        ],
+        "regex_absent": [
+          "cp ",
+          "backup",
+          "\\.bak",
+          "\\-\\-dry-run",
+          "confirm",
+          "readline",
+          "input\\("
+        ],
+        "llm_check": [
+          "Does this code modify or delete files or database records without first creating a backup or asking the user to confirm?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "cp ",
+          "\\.bak",
+          "backup",
+          "confirm",
+          "--dry-run",
+          "readline\\(",
+          "input\\('Are you sure"
+        ],
+        "llm_check": [
+          "Has the user confirmed a backup or confirmation step has been added?"
+        ]
+      },
+      "nudge": "That operation modifies or deletes something directly — is there a backup in place in case something goes wrong?",
+      "explanation": {
+        "plain": "Some commands are one-way doors — once they run, what was there before is gone. This has caught many people off guard, including experienced developers. The awk command, for example, can silently overwrite an entire file if used incorrectly.",
+        "analogy": "It's like editing the only copy of a document with no undo button. One mistake and it's gone.",
+        "options": [
+          {
+            "label": "Before running anything destructive",
+            "solution": "Ask Claude to add a backup step first — copy the file before modifying it"
+          },
+          {
+            "label": "For database operations",
+            "solution": "Always run a SELECT first to confirm you're targeting the right rows before running DELETE"
+          },
+          {
+            "label": "For scripts",
+            "solution": "Ask Claude to add a --dry-run mode that shows what would be deleted without actually deleting it"
+          }
+        ],
+        "follow_up_question": "Do you have a copy of the original file saved somewhere before running this?"
+      },
+      "handoff_prompt_template": "Before we run this, can you modify the code to first create a backup of {file_or_data} and then ask me to confirm before doing anything destructive? I want to make sure I can recover if something goes wrong. I am not a developer — explain what you're adding.",
+      "template_variables": {
+        "file_or_data": {
+          "source": "session_context.target_file_or_table",
+          "fallback": "the file or data being modified"
+        }
+      }
+    },
+    {
+      "id": "error_handling",
+      "name": "Error handling",
+      "description": "What happens when something goes wrong",
+      "severity": "high",
+      "phase": "execution",
+      "related_categories": [
+        "rate_limiting",
+        "cors_and_environment"
+      ],
+      "triggers": {
+        "keywords": [
+          "api",
+          "fetch",
+          "request",
+          "call",
+          "connect",
+          "send",
+          "receive",
+          "network"
+        ],
+        "code_patterns": [
+          "fetch\\(",
+          "axios\\.",
+          "await ",
+          "async function",
+          "\\.then\\(",
+          "XMLHttpRequest"
+        ],
+        "regex_absent": [
+          "try\\s*{",
+          "\\.catch\\(",
+          "catch\\s*\\(",
+          "onerror",
+          "error state",
+          "fallback"
+        ],
+        "llm_check": [
+          "Does the code make any network requests or API calls without wrapping them in error handling?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "try\\s*{",
+          "\\.catch\\(",
+          "catch\\s*\\(err",
+          "catch\\s*\\(error"
+        ],
+        "llm_check": [
+          "Has the user added error handling or confirmed they understand the risk?"
+        ]
+      },
+      "nudge": "What should your app do if something goes wrong — like the internet drops out or a request fails?",
+      "explanation": {
+        "plain": "Apps fail. APIs go down, internet cuts out, users do unexpected things. Without error handling, your app either freezes silently or crashes in a confusing way. With it, you can show a friendly message instead of a blank screen.",
+        "analogy": "It's like a vending machine. When it works, great. But a good one tells you 'out of stock' — a bad one just takes your money and does nothing.",
+        "options": [
+          {
+            "label": "Basic",
+            "solution": "Ask Claude to wrap API calls in try/catch and show a simple error message to the user"
+          },
+          {
+            "label": "Better",
+            "solution": "Add a loading state and an error state so the user always knows what's happening"
+          },
+          {
+            "label": "Best",
+            "solution": "Add retry logic for network failures and log errors somewhere you can review them"
+          }
+        ],
+        "follow_up_question": "What do you want to show the user if the app hits an error — a message, a retry button, or something else?"
+      },
+      "handoff_prompt_template": "Can you update this code to handle errors gracefully? If {failure_scenario} happens, I want it to show a clear message to the user instead of crashing or freezing. I am not a developer — explain what you're adding as you go.",
+      "template_variables": {
+        "failure_scenario": {
+          "source": "session_context.api_or_network_dependency",
+          "fallback": "the network request fails or the API is unavailable"
+        }
+      }
+    },
+    {
+      "id": "input_validation",
+      "name": "Input validation",
+      "description": "Whether the app checks what users type before using it",
+      "severity": "high",
+      "phase": "execution",
+      "related_categories": [
+        "sensitive_data",
+        "error_handling"
+      ],
+      "triggers": {
+        "keywords": [
+          "form",
+          "input",
+          "type in",
+          "enter",
+          "submit",
+          "field",
+          "user enters",
+          "fill in",
+          "text box",
+          "dropdown",
+          "select"
+        ],
+        "code_patterns": [
+          "<input",
+          "<form",
+          "<textarea",
+          "onChange",
+          "onSubmit",
+          "e\\.target\\.value",
+          "request\\.body",
+          "req\\.body",
+          "formData"
+        ],
+        "regex_absent": [
+          "required",
+          "minLength",
+          "maxLength",
+          "pattern=",
+          "type=\"number\"",
+          "type=\"email\"",
+          "validate",
+          "sanitize",
+          "zod",
+          "yup"
+        ],
+        "llm_check": [
+          "Does this form accept user input without checking whether the values are valid, complete, or safe before using or storing them?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "required",
+          "validate\\(",
+          "\\.trim\\(\\)",
+          "isValid",
+          "sanitize",
+          "zod\\.parse",
+          "yup\\.validate"
+        ],
+        "llm_check": [
+          "Has the user added validation logic or confirmed what fields need to be checked?"
+        ]
+      },
+      "nudge": "Your app takes user input — what happens if someone types something unexpected, like a letter where a number should go, or leaves a field blank?",
+      "explanation": {
+        "plain": "Users will always do something you didn't expect — type a word into a number field, leave things blank, paste in something enormous. Without validation, your app either breaks or stores bad data silently.",
+        "analogy": "It's like a sign-up form that accepts 'banana' as a phone number. The data goes in fine, but causes problems everywhere it's used later.",
+        "options": [
+          {
+            "label": "Basic",
+            "solution": "Add 'required' to form fields and set the correct type (number, email, date) on each input"
+          },
+          {
+            "label": "Better",
+            "solution": "Show the user a friendly error message explaining what went wrong and how to fix it"
+          },
+          {
+            "label": "For anything sensitive",
+            "solution": "Sanitize inputs to prevent malicious content from being saved or run"
+          }
+        ],
+        "follow_up_question": "Which fields in your form are required, and are any of them numbers, dates, or email addresses specifically?"
+      },
+      "handoff_prompt_template": "Can you add input validation to this form? {field_list} should be required. Show a friendly inline error message if the user gets it wrong instead of just failing silently. I am not a developer — explain what you're changing.",
+      "template_variables": {
+        "field_list": {
+          "source": "session_context.form_fields",
+          "fallback": "All fields"
+        }
+      }
+    },
+    {
+      "id": "sensitive_data",
+      "name": "Sensitive data handling",
+      "description": "Whether the app stores information that could harm someone if exposed",
+      "severity": "critical",
+      "phase": "architecture",
+      "related_categories": [
+        "multi_user_auth",
+        "legal_and_compliance",
+        "hardcoded_secrets"
+      ],
+      "triggers": {
+        "keywords": [
+          "medical",
+          "health",
+          "medication",
+          "diagnosis",
+          "password",
+          "credit card",
+          "payment",
+          "social security",
+          "SSN",
+          "address",
+          "phone number",
+          "private",
+          "confidential",
+          "HIPAA",
+          "personal",
+          "date of birth",
+          "insurance"
+        ],
+        "code_patterns": [
+          "password",
+          "ssn",
+          "credit_card",
+          "dob",
+          "date_of_birth",
+          "medical_record",
+          "diagnosis",
+          "insurance_number"
+        ],
+        "regex_absent": [
+          "https",
+          "encrypt",
+          "bcrypt",
+          "hash",
+          "vault",
+          "secret",
+          "httpOnly"
+        ],
+        "llm_check": [
+          "Is the app storing health, financial, or personally identifying information in localStorage, plain text, or an unsecured location?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "bcrypt",
+          "encrypt",
+          "https",
+          "httpOnly",
+          "secure: true",
+          "vault"
+        ],
+        "llm_check": [
+          "Has the user acknowledged the sensitivity of the data and confirmed a storage approach?"
+        ]
+      },
+      "nudge": "This app handles sensitive information — have you thought about who can access it and whether it's stored safely?",
+      "explanation": {
+        "plain": "Health data, passwords, and personal information need extra care. Stored carelessly, they can be accessed by others or exposed if something goes wrong. This isn't just a technical concern — for health data especially, there are legal implications.",
+        "analogy": "It's the difference between keeping your diary on your desk vs. in a locked drawer. The content is the same, but who can read it is very different.",
+        "options": [
+          {
+            "label": "Minimum",
+            "solution": "Never store passwords yourself — use an auth service that handles this. Never put sensitive data in the URL."
+          },
+          {
+            "label": "Better",
+            "solution": "Use HTTPS, keep sensitive data off the frontend entirely, store it only in a secured backend database"
+          },
+          {
+            "label": "For medical or financial data",
+            "solution": "Research HIPAA or PCI compliance requirements before building — some data has legal storage requirements"
+          }
+        ],
+        "follow_up_question": "Who besides you will be able to see this data — just you, specific people, or anyone?"
+      },
+      "handoff_prompt_template": "My app stores {sensitive_data_type}. Can you review what we've built so far and flag any places where this data might be exposed or stored insecurely? What is the minimum I need to do to keep this safe? I am not a developer.",
+      "template_variables": {
+        "sensitive_data_type": {
+          "source": "session_context.data_being_stored",
+          "fallback": "sensitive personal information"
+        }
+      }
+    },
+    {
+      "id": "backup_and_recovery",
+      "name": "Backup and recovery",
+      "description": "Whether data can be recovered if something goes wrong",
+      "severity": "high",
+      "phase": "architecture",
+      "related_categories": [
+        "data_persistence",
+        "destructive_commands",
+        "version_control"
+      ],
+      "triggers": {
+        "keywords": [
+          "important data",
+          "can't lose",
+          "critical",
+          "months of",
+          "years of",
+          "irreplaceable",
+          "medical records",
+          "financial records",
+          "production"
+        ],
+        "code_patterns": [
+          "DELETE FROM",
+          "DROP TABLE",
+          "truncate\\(",
+          "rm ",
+          "overwrite"
+        ],
+        "regex_absent": [
+          "export",
+          "download",
+          "backup",
+          "dump",
+          "CSV",
+          "JSON\\.stringify.*download"
+        ],
+        "llm_check": [
+          "Does the app store important user data with no way to export or download it?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "export",
+          "download",
+          "backup",
+          "\\.csv",
+          "JSON\\.stringify",
+          "blob"
+        ],
+        "llm_check": [
+          "Has the user added an export feature or confirmed backups are handled by their database provider?"
+        ]
+      },
+      "nudge": "If your database or file got corrupted tomorrow, could you recover your data? Is there an export or backup option?",
+      "explanation": {
+        "plain": "Data loss is more common than people expect — a bug, a bad command, a service going down. For anything important, you want at least one way to get your data out and a copy stored somewhere safe.",
+        "analogy": "It's like keeping photos only on your phone with no iCloud backup. Fine until the phone breaks.",
+        "options": [
+          {
+            "label": "Simplest",
+            "solution": "Add an Export to CSV button so the user can download their data at any time"
+          },
+          {
+            "label": "Better",
+            "solution": "Set up automatic backups — most cloud databases offer this for free"
+          },
+          {
+            "label": "Best",
+            "solution": "Backups plus version history so you can roll back to any point in time"
+          }
+        ],
+        "follow_up_question": "How bad would it be if all the data in this app disappeared tomorrow?"
+      },
+      "handoff_prompt_template": "Can you add an export feature to this app that lets me download all my {data_type} as a CSV or JSON file? I want to be able to make my own backups in case something goes wrong. Keep it simple — I am not a developer.",
+      "template_variables": {
+        "data_type": {
+          "source": "session_context.data_being_stored",
+          "fallback": "data"
+        }
+      }
+    },
+    {
+      "id": "scalability",
+      "name": "Scale and performance",
+      "description": "Whether the app will hold up as data or users grow",
+      "severity": "medium",
+      "phase": "architecture",
+      "related_categories": [
+        "data_persistence",
+        "rate_limiting"
+      ],
+      "triggers": {
+        "keywords": [
+          "grow",
+          "scale",
+          "more users",
+          "hundreds",
+          "thousands",
+          "lots of data",
+          "over time",
+          "long term",
+          "months",
+          "years",
+          "production"
+        ],
+        "code_patterns": [
+          "SELECT \\*",
+          "getAll\\(",
+          "findAll\\(",
+          "\\.find\\(\\)",
+          "fetch.*\\/all"
+        ],
+        "regex_absent": [
+          "LIMIT",
+          "pagination",
+          "page=",
+          "offset",
+          "cursor",
+          "take:",
+          "skip:"
+        ],
+        "llm_check": [
+          "Does the code load all records from the database or storage at once with no limit or pagination?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "LIMIT",
+          "pagination",
+          "page\\s*=",
+          "offset",
+          "cursor",
+          "take:",
+          "skip:"
+        ],
+        "llm_check": [
+          "Has the user added pagination or confirmed the data volume will always be small?"
+        ]
+      },
+      "nudge": "Your app works great now — but what happens in six months when there's ten times more data? Has the approach been designed to handle growth?",
+      "explanation": {
+        "plain": "Apps that work perfectly with 50 records can grind to a halt with 5,000. It's not about being pessimistic — it's about not having to rebuild everything later.",
+        "analogy": "It's like buying a car for your current commute but not thinking about the fact you'll be driving cross-country in a year.",
+        "options": [
+          {
+            "label": "Basic",
+            "solution": "Add pagination — show 20 records at a time instead of loading everything"
+          },
+          {
+            "label": "Better",
+            "solution": "Add search and filter so users can find what they need without scrolling through everything"
+          },
+          {
+            "label": "For databases",
+            "solution": "Add indexes on the columns you search or sort by most often"
+          }
+        ],
+        "follow_up_question": "Roughly how much data do you expect this app to hold in a year — tens of records, hundreds, or thousands?"
+      },
+      "handoff_prompt_template": "As this app grows, I'm worried about performance. Can you add pagination to limit how many {data_type} are loaded at once, and add a simple search or filter? Explain what you're doing as you go. I am not a developer.",
+      "template_variables": {
+        "data_type": {
+          "source": "session_context.data_being_stored",
+          "fallback": "records"
+        }
+      }
+    },
+    {
+      "id": "hardcoded_secrets",
+      "name": "Hardcoded secrets and API keys",
+      "description": "Whether sensitive credentials are embedded directly in the code",
+      "severity": "critical",
+      "phase": "execution",
+      "related_categories": [
+        "sensitive_data",
+        "deployment_and_sharing",
+        "cost_and_billing"
+      ],
+      "triggers": {
+        "keywords": [
+          "API key",
+          "secret key",
+          "token",
+          "credentials",
+          "key",
+          "password"
+        ],
+        "code_patterns": [
+          "api_key\\s*=\\s*['\"]",
+          "apiKey:\\s*['\"]",
+          "API_KEY\\s*=\\s*['\"]",
+          "secret\\s*=\\s*['\"]",
+          "password\\s*=\\s*['\"]",
+          "Bearer [A-Za-z0-9]",
+          "sk-[A-Za-z0-9]",
+          "pk_live_",
+          "pk_test_"
+        ],
+        "regex_absent": [
+          "process\\.env\\.",
+          "import\\.meta\\.env\\.",
+          "\\.env",
+          "os\\.environ"
+        ],
+        "llm_check": [
+          "Does the code contain what appears to be a literal API key, secret, token, or password value rather than reading it from an environment variable?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "process\\.env\\.",
+          "import\\.meta\\.env\\.",
+          "os\\.environ",
+          "\\.env"
+        ],
+        "llm_check": [
+          "Has the user moved secrets to environment variables or confirmed none exist in the code?"
+        ]
+      },
+      "nudge": "There's what looks like an API key or password written directly into the code — if you share this or push it to GitHub, that credential will be exposed publicly.",
+      "explanation": {
+        "plain": "API keys and passwords written directly into code are like leaving your house key taped to the front door. Anyone who sees the code — including anyone you share it with or if it ends up on GitHub — can use that key, and you'll be the one charged for it.",
+        "analogy": "You wouldn't write your bank PIN in a text message to someone. Same principle.",
+        "options": [
+          {
+            "label": "For local projects",
+            "solution": "Store keys in a .env file and make sure it's in your .gitignore so it never gets uploaded"
+          },
+          {
+            "label": "For deployed apps",
+            "solution": "Use environment variables in your hosting platform — Vercel, Netlify, and Railway all have a simple UI for this"
+          },
+          {
+            "label": "If already exposed",
+            "solution": "Rotate the key immediately — generate a new one and revoke the old one before doing anything else"
+          }
+        ],
+        "follow_up_question": "Has this code been shared anywhere or pushed to GitHub yet?"
+      },
+      "handoff_prompt_template": "I have API keys written directly in my code. Can you help me move them to a .env file and update the code to read from environment variables instead? Also update the .gitignore so the .env file never gets committed. Walk me through each step — I am not a developer.",
+      "template_variables": {}
+    },
+    {
+      "id": "deployment_and_sharing",
+      "name": "Deployment and sharing",
+      "description": "Whether the user knows how to get the app off their machine and into the world",
+      "severity": "medium",
+      "phase": "deployment",
+      "related_categories": [
+        "hardcoded_secrets",
+        "cors_and_environment",
+        "cost_and_billing"
+      ],
+      "triggers": {
+        "keywords": [
+          "share",
+          "send to",
+          "show someone",
+          "publish",
+          "go live",
+          "deploy",
+          "put online",
+          "access from another",
+          "link to",
+          "host",
+          "URL"
+        ],
+        "code_patterns": [
+          "localhost",
+          "127\\.0\\.0\\.1",
+          "file://"
+        ],
+        "regex_absent": [
+          "vercel",
+          "netlify",
+          "railway",
+          "render",
+          "heroku",
+          "fly\\.io",
+          "github pages"
+        ],
+        "llm_check": [
+          "Is the app currently configured to run only on localhost with no deployment setup mentioned?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "vercel",
+          "netlify",
+          "railway",
+          "render",
+          "heroku",
+          "fly\\.io"
+        ],
+        "llm_check": [
+          "Has the user deployed the app or confirmed a hosting platform?"
+        ]
+      },
+      "nudge": "This app runs on your computer right now — do you know how to share it with others or access it from a different device?",
+      "explanation": {
+        "plain": "An app that runs on your laptop only works on your laptop. If you want others to use it, or to access it from your phone, it needs to be hosted somewhere on the internet.",
+        "analogy": "It's like cooking a great meal in your kitchen but not knowing how to get it to a restaurant.",
+        "options": [
+          {
+            "label": "Simplest — static HTML/CSS/JS",
+            "solution": "Netlify Drop — drag your folder onto netlify.com/drop and get a live URL in 30 seconds, free"
+          },
+          {
+            "label": "Apps with a backend",
+            "solution": "Railway or Render — connect your GitHub repo and they handle the rest, free tiers available"
+          },
+          {
+            "label": "Just sharing with one person",
+            "solution": "Send the HTML file directly if it has no backend — they can open it in their browser"
+          }
+        ],
+        "follow_up_question": "Who needs to access this, and do they need to be on the same wifi as you or anywhere in the world?"
+      },
+      "handoff_prompt_template": "I want to share this app with {audience}. Right now it only runs on my computer. Can you help me deploy it so it has a real URL? I'm not a developer — suggest the simplest hosting option for what I've built and walk me through it step by step.",
+      "template_variables": {
+        "audience": {
+          "source": "user_reply",
+          "fallback": "other people"
+        }
+      }
+    },
+    {
+      "id": "mobile_responsiveness",
+      "name": "Mobile and device compatibility",
+      "description": "Whether the app works on phones and different screen sizes",
+      "severity": "medium",
+      "phase": "execution",
+      "related_categories": [
+        "deployment_and_sharing",
+        "accessibility"
+      ],
+      "triggers": {
+        "keywords": [
+          "phone",
+          "mobile",
+          "tablet",
+          "on the go",
+          "anywhere",
+          "from my phone",
+          "iPad",
+          "share with"
+        ],
+        "code_patterns": [
+          "width:\\s*[89][0-9]{2}px",
+          "width:\\s*1[0-9]{3}px",
+          "position:\\s*fixed.*width"
+        ],
+        "regex_absent": [
+          "viewport",
+          "media query",
+          "@media",
+          "max-width",
+          "min-width",
+          "responsive"
+        ],
+        "llm_check": [
+          "Does the HTML lack a viewport meta tag, or does the layout use fixed pixel widths that would break on a small screen?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "viewport",
+          "@media",
+          "max-width",
+          "flexbox",
+          "grid",
+          "responsive"
+        ],
+        "llm_check": [
+          "Has the user added responsive styles or confirmed the app is desktop-only intentionally?"
+        ]
+      },
+      "nudge": "Will people use this on their phones? The current layout might not look right on a small screen.",
+      "explanation": {
+        "plain": "Most people reach for their phone first. An app designed only for a laptop screen can be nearly unusable on a phone — buttons too small, content cut off, horizontal scrolling.",
+        "analogy": "It's like printing a billboard and trying to read it as a flyer.",
+        "options": [
+          {
+            "label": "Quick fix",
+            "solution": "Add a viewport meta tag and use percentage widths instead of fixed pixel widths"
+          },
+          {
+            "label": "Better",
+            "solution": "Use CSS flexbox or grid with responsive breakpoints — Claude can add this to existing code"
+          },
+          {
+            "label": "Best",
+            "solution": "Design mobile-first — start with the phone layout and expand for larger screens"
+          }
+        ],
+        "follow_up_question": "What device will most people use to access this — mostly desktop, mostly phone, or a mix?"
+      },
+      "handoff_prompt_template": "Can you make this app work properly on phones? It needs to be usable on a small screen. Please add a viewport meta tag, make the layout responsive, and make sure buttons are large enough to tap. Show me what you changed and why.",
+      "template_variables": {}
+    },
+    {
+      "id": "dependency_and_maintenance",
+      "name": "Dependencies and long-term maintenance",
+      "description": "Whether the app relies on external services or libraries that could change",
+      "severity": "low",
+      "phase": "maintenance",
+      "related_categories": [
+        "deployment_and_sharing",
+        "cost_and_billing"
+      ],
+      "triggers": {
+        "keywords": [
+          "library",
+          "package",
+          "npm",
+          "third party",
+          "service",
+          "plugin",
+          "framework",
+          "SDK"
+        ],
+        "code_patterns": [
+          "import .* from ['\"]",
+          "require\\(",
+          "cdn\\.jsdelivr\\.net",
+          "unpkg\\.com",
+          "npm install"
+        ],
+        "regex_absent": [
+          "package-lock\\.json",
+          "yarn\\.lock",
+          "\"version\":\\s*\"[0-9]"
+        ],
+        "llm_check": [
+          "Does the code import external libraries from CDN links without pinned version numbers, or use npm packages without a lock file?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "package-lock\\.json",
+          "yarn\\.lock",
+          "@[0-9]+\\.[0-9]+\\.[0-9]+"
+        ],
+        "llm_check": [
+          "Has the user pinned their dependencies or acknowledged the risk?"
+        ]
+      },
+      "nudge": "This app depends on external libraries or services — do you have a plan if one of them changes or goes down?",
+      "explanation": {
+        "plain": "External libraries get updated, change their terms, or disappear. An app that relies on them without noting which versions can break unexpectedly months later when something updates automatically.",
+        "analogy": "It's like building your house on a foundation that someone else owns and can change without telling you.",
+        "options": [
+          {
+            "label": "Minimum",
+            "solution": "Pin your library versions so updates don't happen automatically and break things"
+          },
+          {
+            "label": "Better",
+            "solution": "Keep a plain-English list of every external service your app uses and what it would do without each one"
+          },
+          {
+            "label": "For critical services",
+            "solution": "Have a fallback — what does the app show if this service is unavailable?"
+          }
+        ],
+        "follow_up_question": "Do you know which external services this app depends on, and what would happen if any of them went down?"
+      },
+      "handoff_prompt_template": "Can you give me a plain-English list of every external library and service this app depends on, what each one does, and what would happen if it became unavailable? Then pin the library versions in the code. I am not a developer.",
+      "template_variables": {}
+    },
+    {
+      "id": "accessibility",
+      "name": "Accessibility",
+      "description": "Whether the app can be used by people with disabilities",
+      "severity": "medium",
+      "phase": "execution",
+      "related_categories": [
+        "mobile_responsiveness",
+        "input_validation"
+      ],
+      "triggers": {
+        "keywords": [
+          "everyone",
+          "public",
+          "anyone",
+          "accessible",
+          "disability",
+          "screen reader",
+          "keyboard"
+        ],
+        "code_patterns": [
+          "<div.*onclick",
+          "<span.*onclick",
+          "background-color.*color"
+        ],
+        "regex_absent": [
+          "alt=",
+          "aria-label",
+          "aria-describedby",
+          "<label",
+          "role=",
+          "tabindex"
+        ],
+        "llm_check": [
+          "Does the code contain images without alt text, form inputs without labels, or interactive elements that only respond to mouse clicks with no keyboard equivalent?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "alt=",
+          "aria-label",
+          "<label for=",
+          "role="
+        ],
+        "llm_check": [
+          "Has the user run an accessibility check or confirmed the app is intentionally private and single-user?"
+        ]
+      },
+      "nudge": "Will anyone with a visual impairment or who uses a keyboard instead of a mouse need to use this? The current version may not work well for them.",
+      "explanation": {
+        "plain": "About 1 in 5 people have some kind of disability that affects how they use software. Accessibility basics — labels, keyboard navigation, sufficient color contrast — are often quick to add and make a big difference.",
+        "analogy": "It's like building a shop without a ramp. You didn't mean to exclude anyone, but you did.",
+        "options": [
+          {
+            "label": "Quick wins",
+            "solution": "Add alt text to all images, add labels to all form fields, make sure you can tab through the whole app with a keyboard"
+          },
+          {
+            "label": "Better",
+            "solution": "Don't rely on color alone to communicate — use icons or text alongside color indicators"
+          },
+          {
+            "label": "Full check",
+            "solution": "Run your app through the WAVE accessibility checker at wave.webaim.org — it's free and shows exactly what to fix"
+          }
+        ],
+        "follow_up_question": "Is this app just for you or will it be used by a broader group of people?"
+      },
+      "handoff_prompt_template": "Can you do a basic accessibility review of this code? Check for: missing alt text, unlabelled form fields, anything that can't be used with a keyboard, and color-only feedback. Fix what you can and give me a plain-English list of what still needs attention.",
+      "template_variables": {}
+    },
+    {
+      "id": "testing",
+      "name": "Testing and edge cases",
+      "description": "Whether the app has been checked against unexpected inputs and scenarios",
+      "severity": "medium",
+      "phase": "execution",
+      "related_categories": [
+        "input_validation",
+        "error_handling",
+        "race_conditions"
+      ],
+      "triggers": {
+        "keywords": [
+          "done",
+          "finished",
+          "complete",
+          "ready to share",
+          "ship",
+          "launch",
+          "go live",
+          "works now",
+          "it works"
+        ],
+        "code_patterns": [],
+        "regex_absent": [
+          "test",
+          "spec",
+          "describe\\(",
+          "it\\(",
+          "expect\\(",
+          "\\.test\\.js",
+          "\\.spec\\.js"
+        ],
+        "llm_check": [
+          "Is the user describing their app as finished or ready to share without any mention of having tested it with edge cases or unexpected inputs?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "describe\\(",
+          "it\\(",
+          "expect\\(",
+          "test\\(",
+          "assert"
+        ],
+        "llm_check": [
+          "Has the user confirmed they've tested edge cases or deliberately accepted the risk?"
+        ]
+      },
+      "nudge": "Before sharing this — have you tried breaking it on purpose? What happens if you leave fields blank, enter huge numbers, or use it on a slow connection?",
+      "explanation": {
+        "plain": "Developers call this testing edge cases — trying the weird things users will inevitably do. An app that works perfectly when used correctly is only half built.",
+        "analogy": "It's like testing a chair by sitting on it normally but never checking if it holds up when someone leans back or sits on the arm.",
+        "options": [
+          {
+            "label": "Manual testing checklist",
+            "solution": "Try: empty inputs, very long text, wrong data types, refreshing mid-action, slow internet, two tabs open at once"
+          },
+          {
+            "label": "Ask Claude to review",
+            "solution": "Paste your code and ask Claude to list the top 5 edge cases it can see and suggest fixes"
+          },
+          {
+            "label": "Automated tests",
+            "solution": "For anything critical, ask Claude to write simple tests that run automatically when you make changes"
+          }
+        ],
+        "follow_up_question": "Have you tried using this app as if you were someone who had never seen it before and didn't know the right way to use it?"
+      },
+      "handoff_prompt_template": "Can you review this code and tell me: what happens if a user does something unexpected? List the top 5 edge cases you can see and suggest simple fixes for each one. Focus on the most likely mistakes a real user would make. I am not a developer.",
+      "template_variables": {}
+    },
+    {
+      "id": "rate_limiting",
+      "name": "Rate limiting and API abuse",
+      "description": "Whether the app can be accidentally or maliciously hammered in a way that burns through API credits or causes unexpected charges",
+      "severity": "critical",
+      "phase": "architecture",
+      "related_categories": [
+        "cost_and_billing",
+        "error_handling",
+        "hardcoded_secrets"
+      ],
+      "triggers": {
+        "keywords": [
+          "openai",
+          "anthropic",
+          "claude",
+          "GPT",
+          "google maps",
+          "twilio",
+          "sendgrid",
+          "stripe",
+          "API call",
+          "AI",
+          "LLM",
+          "SMS",
+          "email blast"
+        ],
+        "code_patterns": [
+          "openai\\.",
+          "anthropic\\.",
+          "client\\.messages",
+          "client\\.chat",
+          "twilio\\.",
+          "sendgrid\\.",
+          "stripe\\."
+        ],
+        "regex_absent": [
+          "rate.?limit",
+          "throttle",
+          "debounce",
+          "cooldown",
+          "max.*calls",
+          "retry.*after",
+          "429"
+        ],
+        "llm_check": [
+          "Does the code call a paid external API — especially an AI or communication API — without any rate limiting, throttling, or per-user call caps?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "rate.?limit",
+          "throttle",
+          "debounce",
+          "cooldown",
+          "429",
+          "retry-after"
+        ],
+        "llm_check": [
+          "Has the user added rate limiting or confirmed API usage will always be trivially small?"
+        ]
+      },
+      "nudge": "This app calls a paid API — what happens if it gets called hundreds of times by mistake, or someone tries to abuse it? That could result in a surprise bill.",
+      "explanation": {
+        "plain": "Every call to an AI or messaging API costs money. A bug that causes your app to call it in a loop, or a user who hammers a button, can burn through your credits in minutes. Developers have woken up to four-figure API bills from a single bug.",
+        "analogy": "It's like leaving a taxi meter running with no limit. Works fine normally, but one wrong turn and the fare is enormous.",
+        "options": [
+          {
+            "label": "Minimum",
+            "solution": "Set a spending cap in your API provider's dashboard — most offer this as a free account setting"
+          },
+          {
+            "label": "Better",
+            "solution": "Add a cooldown between calls — prevent the same user from triggering the API more than once every few seconds"
+          },
+          {
+            "label": "Best",
+            "solution": "Add a per-user daily cap and alert yourself if usage spikes unexpectedly"
+          }
+        ],
+        "follow_up_question": "Have you set a spending cap in your API provider's dashboard yet?"
+      },
+      "handoff_prompt_template": "My app calls {api_name}. I'm worried about accidentally running up a huge bill from a bug or someone abusing it. Can you add a simple rate limit so it can't be called more than {call_limit} times per minute per user, and tell me how to set a spending cap in my API dashboard? I am not a developer.",
+      "template_variables": {
+        "api_name": {
+          "source": "session_context.apis_used",
+          "fallback": "a paid external API"
+        },
+        "call_limit": {
+          "source": "user_reply",
+          "fallback": "10"
+        }
+      }
+    },
+    {
+      "id": "cors_and_environment",
+      "name": "CORS and environment differences",
+      "description": "Whether code that works locally will also work when deployed",
+      "severity": "high",
+      "phase": "deployment",
+      "related_categories": [
+        "deployment_and_sharing",
+        "error_handling",
+        "hardcoded_secrets"
+      ],
+      "triggers": {
+        "keywords": [
+          "deploy",
+          "it works locally",
+          "works on my machine",
+          "push to",
+          "go live",
+          "production",
+          "Vercel",
+          "Netlify",
+          "Railway"
+        ],
+        "code_patterns": [
+          "localhost",
+          "127\\.0\\.0\\.1",
+          "http://",
+          "fetch\\('http"
+        ],
+        "regex_absent": [
+          "CORS",
+          "Access-Control",
+          "process\\.env",
+          "import\\.meta\\.env",
+          "origin"
+        ],
+        "llm_check": [
+          "Does the code hardcode localhost URLs, use http instead of https, or make cross-origin requests without CORS headers that will fail once deployed?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "CORS",
+          "Access-Control-Allow-Origin",
+          "process\\.env\\..*URL",
+          "import\\.meta\\.env\\..*URL"
+        ],
+        "llm_check": [
+          "Has the user confirmed the app deployed successfully and API calls work in production?"
+        ]
+      },
+      "nudge": "This works on your machine — but have you checked whether it will still work once it's deployed? There's a common set of things that break between local and live.",
+      "explanation": {
+        "plain": "A huge number of apps work perfectly on the developer's machine and then break the moment they go live. The most common culprits are: URLs that still point to localhost, security rules that block requests between different domains (called CORS), and environment variables that exist on your machine but weren't set up on the server.",
+        "analogy": "It's like rehearsing a speech in your living room then discovering the microphone at the venue works completely differently.",
+        "options": [
+          {
+            "label": "Before deploying",
+            "solution": "Replace all hardcoded localhost URLs with environment variables that can be set differently per environment"
+          },
+          {
+            "label": "If you see CORS errors",
+            "solution": "Ask Claude to add CORS headers to your backend — this is the most common deployment error for novices"
+          },
+          {
+            "label": "Checklist",
+            "solution": "Verify: all environment variables are set on the server, all URLs use https not http, and the app has been tested in an incognito window after deploying"
+          }
+        ],
+        "follow_up_question": "After deploying, did you open the live URL in an incognito window and test every feature from scratch?"
+      },
+      "handoff_prompt_template": "I just deployed this app but some things aren't working the way they did locally. Can you review the code for common issues that break between local and production — specifically CORS errors, hardcoded localhost URLs, and missing environment variables? I am not a developer — explain what you find in plain language.",
+      "template_variables": {}
+    },
+    {
+      "id": "version_control",
+      "name": "Version control and undo",
+      "description": "Whether the user has a way to experiment safely and roll back mistakes across their entire project",
+      "severity": "high",
+      "phase": "architecture",
+      "related_categories": [
+        "destructive_commands",
+        "backup_and_recovery"
+      ],
+      "triggers": {
+        "keywords": [
+          "start over",
+          "broke everything",
+          "undo",
+          "go back to",
+          "before I changed",
+          "previous version",
+          "it was working",
+          "revert"
+        ],
+        "code_patterns": [],
+        "regex_absent": [
+          "\\.git",
+          "git init",
+          "git commit",
+          "github\\.com",
+          "gitlab\\.com"
+        ],
+        "llm_check": [
+          "Is there any sign the user is working with Git or has their project under version control?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "\\.git",
+          "git commit",
+          "github\\.com",
+          "gitlab\\.com"
+        ],
+        "llm_check": [
+          "Has the user confirmed they are using Git or an equivalent version control system?"
+        ]
+      },
+      "nudge": "Do you have a way to undo changes to your whole project — not just one file — if something goes wrong? Right now you might not have a safety net.",
+      "explanation": {
+        "plain": "Without version control, every change you make is permanent. There's no undo button for your whole project. Version control — the most common tool is called Git — takes a snapshot of your project every time you tell it to. If something breaks, you can go back to any earlier snapshot instantly.",
+        "analogy": "It's like the difference between editing a Google Doc (which tracks every change and lets you go back in time) and editing a Word document with no save history.",
+        "options": [
+          {
+            "label": "Easiest start",
+            "solution": "GitHub Desktop — a visual app that lets you use Git without any command line. Free, works on Mac and Windows."
+          },
+          {
+            "label": "Built into VS Code",
+            "solution": "VS Code has Git built in — you can commit changes with a few clicks from the sidebar"
+          },
+          {
+            "label": "Minimum habit",
+            "solution": "Even without Git, copy your entire project folder to a new location with today's date before making big changes"
+          }
+        ],
+        "follow_up_question": "Have you ever used Git or GitHub before, or would you like the absolute simplest way to get started?"
+      },
+      "handoff_prompt_template": "I'm not using Git or any version control. Can you walk me through setting up GitHub Desktop and making my first commit for this project? I want to be able to go back in time if I break something. I am not a developer — keep it simple and step by step.",
+      "template_variables": {}
+    },
+    {
+      "id": "cost_and_billing",
+      "name": "Cost and billing awareness",
+      "description": "Whether the user understands what their app will cost to run and has guardrails against surprise charges",
+      "severity": "high",
+      "phase": "architecture",
+      "related_categories": [
+        "rate_limiting",
+        "hardcoded_secrets",
+        "deployment_and_sharing"
+      ],
+      "triggers": {
+        "keywords": [
+          "openai",
+          "anthropic",
+          "google maps",
+          "twilio",
+          "stripe",
+          "sendgrid",
+          "AWS",
+          "Azure",
+          "GCP",
+          "paid API",
+          "production",
+          "go live",
+          "real users"
+        ],
+        "code_patterns": [
+          "openai\\.",
+          "anthropic\\.",
+          "maps\\.googleapis",
+          "twilio\\.",
+          "stripe\\."
+        ],
+        "regex_absent": [
+          "spending.*limit",
+          "budget.*alert",
+          "billing.*cap",
+          "max.*spend"
+        ],
+        "llm_check": [
+          "Is the app using any paid API or cloud service without any mention of cost monitoring, spending caps, or billing alerts?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "spending limit",
+          "budget alert",
+          "billing cap"
+        ],
+        "llm_check": [
+          "Has the user confirmed they have set spending caps or billing alerts on all paid services?"
+        ]
+      },
+      "nudge": "Before this goes live with real users — do you know what it will cost to run, and do you have a cap in place so a bug or traffic spike can't create a huge unexpected bill?",
+      "explanation": {
+        "plain": "Most cloud services and APIs charge per use. That's fine when it's just you testing — but once real users hit it, costs can scale fast. A bug that causes runaway API calls, or an app that unexpectedly goes viral, has generated four and five-figure surprise bills for novice builders.",
+        "analogy": "It's like a pay-per-minute phone call where you don't realize how long you've been on hold.",
+        "options": [
+          {
+            "label": "Minimum — do this now",
+            "solution": "Set a spending cap or budget alert in every API dashboard you use — most services offer this for free in account settings"
+          },
+          {
+            "label": "Better",
+            "solution": "Set up a free monitoring alert (e.g. via your cloud provider) that emails you if daily spend exceeds a threshold you're comfortable with"
+          },
+          {
+            "label": "Before launch",
+            "solution": "Estimate your cost per user per month and make sure your pricing (or budget) covers it before you invite anyone"
+          }
+        ],
+        "follow_up_question": "Have you logged into each API provider's billing settings and set a spending cap yet?"
+      },
+      "handoff_prompt_template": "I'm about to share this app with real users and it calls {services}. Can you help me understand what it will cost to run, what could cause costs to spike unexpectedly, and walk me through setting spending caps on each service? I am not a developer.",
+      "template_variables": {
+        "services": {
+          "source": "session_context.apis_used",
+          "fallback": "paid external APIs"
+        }
+      }
+    },
+    {
+      "id": "legal_and_compliance",
+      "name": "Legal and compliance",
+      "description": "Whether the app has legal obligations the user hasn't thought about",
+      "severity": "high",
+      "phase": "architecture",
+      "related_categories": [
+        "sensitive_data",
+        "multi_user_auth",
+        "deployment_and_sharing"
+      ],
+      "triggers": {
+        "keywords": [
+          "public",
+          "anyone",
+          "users",
+          "sign up",
+          "children",
+          "kids",
+          "EU",
+          "Europe",
+          "medical",
+          "health",
+          "financial",
+          "payment",
+          "collect data",
+          "store data",
+          "personal information"
+        ],
+        "code_patterns": [
+          "email",
+          "name",
+          "address",
+          "dob",
+          "date_of_birth",
+          "payment",
+          "subscribe"
+        ],
+        "regex_absent": [
+          "privacy policy",
+          "terms of service",
+          "GDPR",
+          "COPPA",
+          "HIPAA",
+          "cookie consent"
+        ],
+        "llm_check": [
+          "Is the app public-facing and collecting any personal information — names, emails, health data, payment data — with no mention of a privacy policy or legal compliance?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "privacy",
+          "terms",
+          "GDPR",
+          "cookie",
+          "consent"
+        ],
+        "llm_check": [
+          "Has the user confirmed they've checked their legal obligations or that the app is purely private?"
+        ]
+      },
+      "nudge": "If real people will use this app and it collects any information about them — even just an email address — there may be legal requirements you need to know about.",
+      "explanation": {
+        "plain": "Once your app is public and collecting information from real people, several laws may apply depending on where those people are. GDPR applies if any users are in Europe. COPPA applies if children under 13 might use it. HIPAA applies to health data. At minimum, most jurisdictions expect a public app to have a privacy policy.",
+        "analogy": "It's like opening a shop — there are licenses, health codes, and rules that apply whether you know about them or not.",
+        "options": [
+          {
+            "label": "Minimum for any public app",
+            "solution": "Add a simple privacy policy — tools like Termly or PrivacyPolicyGenerator.info generate one for free"
+          },
+          {
+            "label": "If you have European users",
+            "solution": "You need a GDPR-compliant cookie consent banner and must honor data deletion requests"
+          },
+          {
+            "label": "If you handle health or payment data",
+            "solution": "Talk to a lawyer before launching — HIPAA and PCI compliance have specific technical requirements you cannot skip"
+          }
+        ],
+        "follow_up_question": "Do you know where your users will be located, and does your app collect anything beyond what's strictly needed to make it work?"
+      },
+      "handoff_prompt_template": "My app is public and collects {data_collected} from users. Can you tell me what legal requirements I might need to worry about — especially around privacy policies, GDPR, and data handling — and what the minimum steps are to stay compliant? I am not a developer or a lawyer, so keep it plain.",
+      "template_variables": {
+        "data_collected": {
+          "source": "session_context.data_being_stored",
+          "fallback": "personal information"
+        }
+      }
+    },
+    {
+      "id": "race_conditions",
+      "name": "Concurrent usage and race conditions",
+      "description": "Whether the app behaves correctly when multiple actions happen at the same time",
+      "severity": "medium",
+      "phase": "execution",
+      "related_categories": [
+        "multi_user_auth",
+        "input_validation",
+        "error_handling"
+      ],
+      "triggers": {
+        "keywords": [
+          "multiple users",
+          "at the same time",
+          "submit",
+          "button",
+          "purchase",
+          "book",
+          "reserve",
+          "claim",
+          "first come",
+          "limited"
+        ],
+        "code_patterns": [
+          "onClick",
+          "onSubmit",
+          "addEventListener.*click",
+          "\\.submit\\("
+        ],
+        "regex_absent": [
+          "disabled",
+          "loading",
+          "debounce",
+          "throttle",
+          "lock",
+          "transaction",
+          "optimistic"
+        ],
+        "llm_check": [
+          "Does the app allow a user to trigger an action (submit, purchase, book, delete) multiple times in quick succession with no guard against duplicate submissions?"
+        ]
+      },
+      "resolved_signals": {
+        "regex_present": [
+          "disabled",
+          "isLoading",
+          "debounce",
+          "throttle",
+          "BEGIN TRANSACTION",
+          "SELECT.*FOR UPDATE"
+        ],
+        "llm_check": [
+          "Has the user added button disabling, debouncing, or database transaction logic to prevent duplicate actions?"
+        ]
+      },
+      "nudge": "What happens if someone clicks the submit button twice quickly, or two people try to do the same thing at exactly the same time?",
+      "explanation": {
+        "plain": "Buttons are clicked twice. Forms are submitted twice. Two people try to book the last slot at the same moment. Without guards against this, your app can create duplicate records, charge someone twice, or let two people both think they got the same thing.",
+        "analogy": "It's like a raffle where two people draw the same winning ticket because nobody was watching the bowl closely enough.",
+        "options": [
+          {
+            "label": "Simplest fix",
+            "solution": "Disable the submit button the moment it's clicked and re-enable it only after the action completes"
+          },
+          {
+            "label": "For databases",
+            "solution": "Use transactions — a way of telling the database 'treat these steps as one all-or-nothing action'"
+          },
+          {
+            "label": "For limited resources",
+            "solution": "Check availability at the moment of action, not just when the page loaded — what was available 10 seconds ago may not be now"
+          }
+        ],
+        "follow_up_question": "What would happen in your app if the same form was submitted twice in one second — would you end up with duplicate data?"
+      },
+      "handoff_prompt_template": "I'm worried about what happens if a user clicks a button multiple times quickly, or two users do the same thing at once. Can you update this code to disable the {button_name} button immediately on click, and add protection against duplicate submissions? I am not a developer — explain what you're adding.",
+      "template_variables": {
+        "button_name": {
+          "source": "session_context.primary_action_button",
+          "fallback": "submit"
+        }
+      }
+    }
+  ],
+  "project_type_profiles": {
+    "tracker": [
+      "data_persistence",
+      "multi_user_auth",
+      "backup_and_recovery",
+      "sensitive_data",
+      "mobile_responsiveness",
+      "version_control"
+    ],
+    "web_app": [
+      "data_persistence",
+      "multi_user_auth",
+      "error_handling",
+      "input_validation",
+      "deployment_and_sharing",
+      "hardcoded_secrets",
+      "cors_and_environment",
+      "legal_and_compliance"
+    ],
+    "script": [
+      "destructive_commands",
+      "error_handling",
+      "hardcoded_secrets",
+      "backup_and_recovery",
+      "version_control"
+    ],
+    "api": [
+      "hardcoded_secrets",
+      "error_handling",
+      "input_validation",
+      "scalability",
+      "multi_user_auth",
+      "rate_limiting",
+      "cors_and_environment"
+    ],
+    "dashboard": [
+      "data_persistence",
+      "multi_user_auth",
+      "scalability",
+      "mobile_responsiveness",
+      "deployment_and_sharing",
+      "cost_and_billing"
+    ],
+    "form": [
+      "input_validation",
+      "data_persistence",
+      "sensitive_data",
+      "error_handling",
+      "race_conditions",
+      "legal_and_compliance"
+    ],
+    "medical": [
+      "sensitive_data",
+      "data_persistence",
+      "backup_and_recovery",
+      "multi_user_auth",
+      "input_validation",
+      "legal_and_compliance"
+    ],
+    "financial": [
+      "sensitive_data",
+      "hardcoded_secrets",
+      "backup_and_recovery",
+      "input_validation",
+      "multi_user_auth",
+      "cost_and_billing",
+      "legal_and_compliance",
+      "race_conditions"
+    ],
+    "chatbot": [
+      "rate_limiting",
+      "cost_and_billing",
+      "hardcoded_secrets",
+      "error_handling",
+      "data_persistence",
+      "legal_and_compliance"
+    ],
+    "automation": [
+      "destructive_commands",
+      "error_handling",
+      "rate_limiting",
+      "hardcoded_secrets",
+      "version_control",
+      "cost_and_billing"
+    ],
+    "browser_extension": [
+      "hardcoded_secrets",
+      "sensitive_data",
+      "legal_and_compliance",
+      "dependency_and_maintenance",
+      "cors_and_environment"
+    ],
+    "cli_tool": [
+      "destructive_commands",
+      "error_handling",
+      "hardcoded_secrets",
+      "version_control",
+      "input_validation"
+    ]
+  },
+  "severity_levels": {
+    "critical": {
+      "label": "Must address",
+      "description": "Skipping this could cause data loss, security breach, surprise charges, or complete failure",
+      "nudge_frequency": "immediate",
+      "icon": "🔴",
+      "cap_exempt": true
+    },
+    "high": {
+      "label": "Should address",
+      "description": "Skipping this will likely cause problems for real users",
+      "nudge_frequency": "soon",
+      "icon": "🟠",
+      "cap_exempt": false
+    },
+    "medium": {
+      "label": "Worth thinking about",
+      "description": "Important for a polished, robust app",
+      "nudge_frequency": "when_relevant",
+      "icon": "🟡",
+      "cap_exempt": false
+    },
+    "low": {
+      "label": "Good to know",
+      "description": "Matters more as the project matures",
+      "nudge_frequency": "end_of_session",
+      "icon": "🔵",
+      "cap_exempt": false
+    }
+  },
+  "system_prompt": {
+    "buddy_persona": "You are Claude Buddy, a senior developer companion for people who are new to building software. You watch what they are building and ask the one question they didn't know they needed to ask. You never write code. You never give step-by-step instructions — that is the job of their main Claude chat. You speak in plain language, use analogies, and keep responses short. You are warm, not alarming. You are curious, not critical.",
+    "explanation_rules": [
+      "Always ground your explanation in the user's specific project — use their words and their context",
+      "Use one analogy maximum per explanation",
+      "Never use jargon without immediately defining it in plain language",
+      "End every explanation with exactly one question",
+      "Never suggest more than three options",
+      "Never write code",
+      "Never give implementation steps"
+    ],
+    "handoff_rules": [
+      "After one explanation exchange, always generate a handoff prompt",
+      "Fill ALL template variables using session context before showing the prompt — never show a raw placeholder like {project} to the user",
+      "If a variable cannot be filled from context, use the fallback value defined in template_variables",
+      "The handoff prompt must include: what the user is building, what the specific problem is, their skill level context",
+      "Always append to novice handoff prompts: 'I am not a developer — please explain as you go'",
+      "Your closing line after a handoff is always: 'I'll keep watching.'",
+      "Never open a third round of conversation — redirect firmly but warmly"
+    ],
+    "hard_rules": [
+      "Never write code under any circumstances",
+      "Never provide implementation steps",
+      "Maximum two exchanges per blindspot before redirecting to main chat",
+      "Never criticize the user's approach — only surface what's missing",
+      "Never overwhelm — surface one blindspot at a time, prioritized by severity",
+      "Never fire the same nudge twice for a category that has been marked resolved"
+    ]
+  },
+  "session_summarization": {
+    "trigger_after_exchanges": 5,
+    "summary_prompt": "Summarize what this user has built so far in 3 bullet points: (1) what the app does, (2) what architectural decisions have been made including any storage, auth, or deployment choices, (3) which blindspot categories have been resolved and which major concerns remain unaddressed. Be concise. This summary will be used as context for future blindspot nudges.",
+    "max_summary_tokens": 350
+  },
+  "nudge_timing": {
+    "immediate": "Fire as soon as the trigger is detected — do not wait",
+    "soon": "Fire within the next 1-2 exchanges",
+    "when_relevant": "Fire when the user seems to be finishing a feature or asking about sharing",
+    "end_of_session": "Fire when the user says they are done or ready to ship",
+    "max_nudges_per_session_by_severity": {
+      "critical": "unlimited — critical nudges are never silenced by the cap",
+      "high": 4,
+      "medium": 3,
+      "low": 1
+    },
+    "min_gap_between_nudges_seconds": 120,
+    "never_repeat_resolved": true
+  }
+}

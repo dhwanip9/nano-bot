@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;" />
+  <title>Claude Buddy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Drag handle — invisible bar at top for window dragging -->
+  <div id="drag-handle" class="drag-handle"></div>
+
+  <!-- ── Onboarding screen ── -->
+  <div id="screen-onboarding" class="screen active">
+    <div class="onboarding-wrap">
+      <div class="buddy-avatar large">
+        <div class="avatar-face">
+          <span class="avatar-eye left"></span>
+          <span class="avatar-eye right"></span>
+        </div>
+      </div>
+      <h1 class="onboarding-title">Hey, I'm Buddy</h1>
+      <p class="onboarding-sub">Your senior dev companion. I watch what you're building and ask the one question you didn't know to ask.</p>
+
+      <div class="form-group">
+        <label class="form-label">Your Anthropic API key</label>
+        <input type="password" id="input-api-key" class="form-input" placeholder="sk-ant-..." autocomplete="off" />
+        <a class="form-hint-link" href="#" id="link-get-key">Get a key at console.anthropic.com →</a>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">What are you building today?</label>
+        <textarea id="input-project" class="form-textarea" placeholder="e.g. A medication tracker my family can use to log doses and see history..." rows="3"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Your coding experience</label>
+        <div class="radio-group">
+          <label class="radio-option">
+            <input type="radio" name="skill" value="novice" checked /> Not a developer
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="skill" value="some" /> Some experience
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="skill" value="dev" /> Developer
+          </label>
+        </div>
+      </div>
+
+      <button id="btn-start" class="btn-primary full-width">Start watching →</button>
+    </div>
+  </div>
+
+  <!-- ── Main companion screen ── -->
+  <div id="screen-main" class="screen">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="header-left">
+        <div class="buddy-avatar small" id="avatar-main">
+          <div class="avatar-face">
+            <span class="avatar-eye left"></span>
+            <span class="avatar-eye right"></span>
+          </div>
+        </div>
+        <div class="header-text">
+          <span class="header-title">Claude Buddy</span>
+          <span class="header-status" id="header-status">Watching...</span>
+        </div>
+      </div>
+      <div class="header-controls">
+        <button class="ctrl-btn" id="btn-settings" title="Settings">⚙</button>
+        <button class="ctrl-btn" id="btn-minimize" title="Minimize">−</button>
+        <button class="ctrl-btn" id="btn-hide" title="Hide">×</button>
+      </div>
+    </div>
+
+    <!-- Project pill -->
+    <div class="project-pill" id="project-pill">
+      <span class="project-pill-label">Watching:</span>
+      <span class="project-pill-text" id="project-pill-text">Your project</span>
+    </div>
+
+    <!-- Nudge feed -->
+    <div class="feed" id="nudge-feed">
+      <div class="feed-empty" id="feed-empty">
+        <div class="feed-empty-icon">👀</div>
+        <p>I'm watching your session.<br/>Paste your prompt or code below and I'll flag anything worth thinking about.</p>
+      </div>
+    </div>
+
+    <!-- Scan input area -->
+    <div class="scan-area">
+      <textarea id="scan-input" class="scan-textarea" placeholder="Paste your prompt or Claude's output here to scan for blindspots..." rows="3"></textarea>
+      <div class="scan-controls">
+        <div class="scan-toggle">
+          <label class="toggle-label">
+            <input type="checkbox" id="toggle-clipboard" />
+            <span class="toggle-track"></span>
+            <span class="toggle-text">Auto-watch clipboard</span>
+          </label>
+        </div>
+        <button id="btn-scan" class="btn-scan">Scan ↗</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Settings screen ── -->
+  <div id="screen-settings" class="screen">
+    <div class="settings-header">
+      <button id="btn-back-settings" class="back-btn">← Back</button>
+      <span class="settings-title">Settings</span>
+    </div>
+
+    <div class="settings-body">
+      <div class="form-group">
+        <label class="form-label">API key</label>
+        <input type="password" id="settings-api-key" class="form-input" autocomplete="off" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">What are you building?</label>
+        <textarea id="settings-project" class="form-textarea" rows="3"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Experience level</label>
+        <div class="radio-group">
+          <label class="radio-option"><input type="radio" name="skill-settings" value="novice" /> Not a developer</label>
+          <label class="radio-option"><input type="radio" name="skill-settings" value="some" /> Some experience</label>
+          <label class="radio-option"><input type="radio" name="skill-settings" value="dev" /> Developer</label>
+        </div>
+      </div>
+
+      <div class="settings-section-label">Session</div>
+      <button id="btn-new-session" class="btn-secondary full-width">Start new session</button>
+      <p class="settings-hint">Clears session memory and resolved blindspots. Your API key and project description are kept.</p>
+
+      <button id="btn-save-settings" class="btn-primary full-width" style="margin-top: 1.5rem;">Save settings</button>
+    </div>
+  </div>
+
+  <!-- ── Nudge detail / chat screen ── -->
+  <div id="screen-nudge" class="screen">
+    <div class="settings-header">
+      <button id="btn-back-nudge" class="back-btn">← Back</button>
+      <span class="settings-title" id="nudge-detail-title">Blindspot</span>
+    </div>
+
+    <div class="nudge-detail-body" id="nudge-detail-body">
+      <!-- Populated dynamically -->
+    </div>
+
+    <div class="nudge-chat-area" id="nudge-chat-area">
+      <!-- Exchange UI populated dynamically -->
+    </div>
+  </div>
+
+  <script src="buddy.js"></script>
+</body>
+</html>
