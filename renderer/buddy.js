@@ -160,10 +160,11 @@ async function onboardingSubmit () {
   btn.textContent = 'Setting up...'
   btn.disabled = true
 
-  // Test the API key
+  // Test the API key before saving
   const result = await window.buddy.chat({
     messages: [{ role: 'user', content: 'Reply with the single word: ready' }],
-    systemPrompt: 'You are a test. Reply only with the single word: ready'
+    systemPrompt: 'You are a test. Reply only with the single word: ready',
+    apiKey
   })
 
   if (result.error) {

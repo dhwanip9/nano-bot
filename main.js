@@ -147,11 +147,11 @@ function createTray () {
     : nativeImage.createEmpty()
 
   tray = new Tray(icon)
-  tray.setToolTip('Claude Buddy')
+  tray.setToolTip('NanoBot')
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Show Buddy', click: () => { if (mainWindow) mainWindow.show() } },
-    { label: 'Hide Buddy', click: () => { if (mainWindow) mainWindow.hide() } },
+    { label: 'Show NanoBot', click: () => { if (mainWindow) mainWindow.show() } },
+    { label: 'Hide NanoBot', click: () => { if (mainWindow) mainWindow.hide() } },
     { type: 'separator' },
     { label: 'New Session', click: () => {
       saveSession({
@@ -165,7 +165,7 @@ function createTray () {
       if (mainWindow) mainWindow.webContents.send('session-reset')
     }},
     { type: 'separator' },
-    { label: 'Quit Claude Buddy', click: () => app.quit() }
+    { label: 'Quit NanoBot', click: () => app.quit() }
   ])
 
   tray.setContextMenu(contextMenu)
@@ -243,11 +243,12 @@ ipcMain.handle('window-drag', (_, { x, y }) => {
 ipcMain.handle('open-external', (_, url) => { shell.openExternal(url) })
 
 // Anthropic API call — proxied through main process so key stays out of renderer
-ipcMain.handle('anthropic-chat', async (_, { messages, systemPrompt }) => {
-  if (!config.apiKey) return { error: 'No API key configured' }
+ipcMain.handle('anthropic-chat', async (_, { messages, systemPrompt, apiKey: keyOverride }) => {
+  const key = keyOverride || config.apiKey
+  if (!key) return { error: 'No API key configured' }
   try {
     const Anthropic = require('@anthropic-ai/sdk')
-    const client = new Anthropic({ apiKey: config.apiKey })
+    const client = new Anthropic({ apiKey: key })
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
