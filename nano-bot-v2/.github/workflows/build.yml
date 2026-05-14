@@ -1,0 +1,138 @@
+name: Build and Release NanoBot
+
+on:
+  push:
+    tags:
+      - 'v*'          # triggers on v1.0.0, v1.1.0, etc.
+  workflow_dispatch:  # allows manual trigger from GitHub UI
+
+jobs:
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Mac (x64 + arm64)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false   # skip code signing for now
+        run: npm run build:mac
+
+      - name: Upload Mac artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-build
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/latest-mac.yml
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:win
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            dist/*.exe
+            dist/latest.yml
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:linux
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/latest-linux.yml
+
+  release:
+    needs: [build-mac, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write    # needed to create GitHub Release
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: NanoBot ${{ github.ref_name }}
+          body: |
+            ## NanoBot ${{ github.ref_name }}
+
+            ### Install
+
+            | Platform | Download |
+            |---|---|
+            | Mac (Apple Silicon + Intel) | `NanoBot-*.dmg` |
+            | Windows | `NanoBot-Setup-*.exe` |
+            | Linux | `NanoBot-*.AppImage` |
+
+            ### First time setup
+            1. Download for your platform and install
+            2. Get a free API key at [console.anthropic.com](https://console.anthropic.com)
+            3. Paste it into NanoBot on first launch
+            4. Describe what you're building and start watching
+
+            ### What's new
+            See [CHANGELOG.md](https://github.com/dhwanip9/nano-bot/blob/main/CHANGELOG.md) for details.
+          files: dist/**/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
