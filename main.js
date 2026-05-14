@@ -306,6 +306,11 @@ function checkAccessibilityPermission () {
   return systemPreferences.isTrustedAccessibilityClient(false)
 }
 
+function requestAccessibilityPermission () {
+  const { systemPreferences } = require('electron')
+  return systemPreferences.isTrustedAccessibilityClient(true)
+}
+
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
 
 // Config
@@ -328,6 +333,7 @@ ipcMain.handle('set-clipboard-watcher', (_, enabled) => {
 
 // Terminal watcher
 ipcMain.handle('check-accessibility', () => checkAccessibilityPermission())
+ipcMain.handle('request-accessibility', () => requestAccessibilityPermission())
 ipcMain.handle('start-terminal-watcher', () => {
   if (!checkAccessibilityPermission()) return { error: 'no_permission' }
   startTerminalWatcher()

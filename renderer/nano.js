@@ -167,17 +167,18 @@ async function onboardingSubmit () {
   btn.textContent = 'Setting up...'
   btn.disabled = true
 
-  // Test the API key
+  // Test the API key before saving
   const result = await window.nano.chat({
     messages: [{ role: 'user', content: 'Reply with the single word: ready' }],
-    systemPrompt: 'You are a test. Reply only with the single word: ready'
+    systemPrompt: 'You are a test. Reply only with the single word: ready',
+    apiKey
   })
 
   if (result.error) {
     btn.textContent = 'Start watching →'
     btn.disabled = false
     $('input-api-key').style.borderColor = 'var(--danger)'
-    alert('Could not connect with that API key. Please check it and try again.')
+    alert('Could not connect: ' + result.error)
     return
   }
 
@@ -218,15 +219,13 @@ async function requestTerminalWatch () {
     setStatus('Watching terminal...')
     return
   }
-  // Show one-time prompt explaining why we need it
-  const granted = confirm(
-    'NanoBot watches your Claude Code / Codex terminal to catch blindspots automatically.\n\n' +
-    'Click OK to open System Settings → Privacy → Accessibility, then enable NanoBot.\n\n' +
-    'You can skip this and use manual paste scanning instead.'
+  // Calling requestAccessibility with prompt=true makes macOS show its
+  // permission dialog and adds the app to the Accessibility list automatically
+  await window.nano.requestAccessibility()
+  // After granting, user needs to restart the app for it to take effect
+  alert(
+    'Almost there! After enabling NanoBot in Accessibility settings, restart the app once and it will start watching your terminal automatically.'
   )
-  if (granted) {
-    window.nano.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')
-  }
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────

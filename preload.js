@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('nano', {
 
   // ── Terminal watcher ─────────────────────────────────────────────────────────
   checkAccessibility: () => ipcRenderer.invoke('check-accessibility'),
+  requestAccessibility: () => ipcRenderer.invoke('request-accessibility'),
   startTerminalWatcher: () => ipcRenderer.invoke('start-terminal-watcher'),
   stopTerminalWatcher: () => ipcRenderer.invoke('stop-terminal-watcher'),
 
