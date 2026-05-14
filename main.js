@@ -246,7 +246,7 @@ ipcMain.handle('open-external', (_, url) => { shell.openExternal(url) })
 ipcMain.handle('anthropic-chat', async (_, { messages, systemPrompt }) => {
   if (!config.apiKey) return { error: 'No API key configured' }
   try {
-    const Anthropic = require('anthropic')
+    const Anthropic = require('@anthropic-ai/sdk')
     const client = new Anthropic({ apiKey: config.apiKey })
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',

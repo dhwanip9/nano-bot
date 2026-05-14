@@ -14,7 +14,7 @@
   "author": "dhwanip9",
   "license": "MIT",
   "dependencies": {
-    "anthropic": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.39.0",
     "electron-updater": "^6.3.0"
   },
   "devDependencies": {
