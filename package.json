@@ -11,7 +11,7 @@
     "build:all": "electron-builder --mac --win --linux"
   },
   "keywords": ["claude", "ai", "assistant", "developer-tools", "electron"],
-  "author": "dhwanip9",
+  "author": "dhwanip9 <dhwanip9@gmail.com>",
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
