@@ -29,9 +29,17 @@ contextBridge.exposeInMainWorld('nano', {
   // ── Anthropic API ────────────────────────────────────────────────────────────
   chat: (payload) => ipcRenderer.invoke('anthropic-chat', payload),
 
+  // ── Terminal watcher ─────────────────────────────────────────────────────────
+  checkAccessibility: () => ipcRenderer.invoke('check-accessibility'),
+  startTerminalWatcher: () => ipcRenderer.invoke('start-terminal-watcher'),
+  stopTerminalWatcher: () => ipcRenderer.invoke('stop-terminal-watcher'),
+
   // ── Event listeners ──────────────────────────────────────────────────────────
   onClipboardChanged: (callback) => {
     ipcRenderer.on('clipboard-changed', (_, data) => callback(data))
+  },
+  onTerminalContent: (callback) => {
+    ipcRenderer.on('terminal-content', (_, data) => callback(data))
   },
   onSessionReset: (callback) => {
     ipcRenderer.on('session-reset', () => callback())

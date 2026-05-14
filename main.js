@@ -205,6 +205,107 @@ function stopClipboardWatcher () {
   }
 }
 
+// ─── Terminal watcher ─────────────────────────────────────────────────────────
+
+const { exec } = require('child_process')
+
+const TERMINAL_POLL_MS = 3000
+const DEBOUNCE_MS = 2000
+const MAX_SCAN_CHARS = 1500
+const MIN_NEW_CHARS = 50
+const CLAUDE_MARKERS = ['claude', 'codex', '> ', '$ claude', '$ codex']
+
+let terminalInterval = null
+let terminalDebounce = null
+const lastTerminalContent = { Terminal: '', iTerm2: '' }
+
+const APPLE_SCRIPTS = {
+  Terminal: `
+    tell application "System Events"
+      if exists process "Terminal" then
+        tell application "Terminal"
+          if (count windows) > 0 then
+            return contents of selected tab of front window
+          end if
+        end tell
+      end if
+    end tell
+    return ""
+  `,
+  iTerm2: `
+    tell application "System Events"
+      if exists process "iTerm2" then
+        tell application "iTerm2"
+          if (count windows) > 0 then
+            tell current session of current window
+              return contents
+            end tell
+          end if
+        end tell
+      end if
+    end tell
+    return ""
+  `
+}
+
+function runAppleScript (script) {
+  return new Promise(resolve => {
+    const tmp = path.join(os.tmpdir(), 'nano-watch.scpt')
+    fs.writeFileSync(tmp, script)
+    exec(`osascript "${tmp}"`, { timeout: 5000 }, (err, stdout) => {
+      resolve(err ? '' : stdout.trim())
+    })
+  })
+}
+
+function looksLikeCLISession (text) {
+  const lower = text.toLowerCase()
+  return CLAUDE_MARKERS.some(m => lower.includes(m))
+}
+
+function extractNewContent (prev, current) {
+  if (current.length <= prev.length) return ''
+  const newText = current.slice(prev.length)
+  return newText.trim()
+}
+
+function startTerminalWatcher () {
+  if (terminalInterval) return
+  terminalInterval = setInterval(async () => {
+    for (const app of ['Terminal', 'iTerm2']) {
+      const content = await runAppleScript(APPLE_SCRIPTS[app])
+      if (!content || !looksLikeCLISession(content)) continue
+
+      const newText = extractNewContent(lastTerminalContent[app], content)
+      lastTerminalContent[app] = content
+
+      if (newText.length < MIN_NEW_CHARS) continue
+
+      // Debounce — wait for output to settle before scanning
+      clearTimeout(terminalDebounce)
+      terminalDebounce = setTimeout(() => {
+        const payload = newText.slice(-MAX_SCAN_CHARS)
+        if (mainWindow) {
+          mainWindow.webContents.send('terminal-content', { text: payload, source: app })
+        }
+      }, DEBOUNCE_MS)
+    }
+  }, TERMINAL_POLL_MS)
+}
+
+function stopTerminalWatcher () {
+  if (terminalInterval) {
+    clearInterval(terminalInterval)
+    terminalInterval = null
+  }
+  clearTimeout(terminalDebounce)
+}
+
+function checkAccessibilityPermission () {
+  const { systemPreferences } = require('electron')
+  return systemPreferences.isTrustedAccessibilityClient(false)
+}
+
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
 
 // Config
@@ -223,6 +324,18 @@ ipcMain.handle('set-clipboard-watcher', (_, enabled) => {
   saveConfig({ clipboardWatcher: enabled })
   enabled ? startClipboardWatcher() : stopClipboardWatcher()
   return enabled
+})
+
+// Terminal watcher
+ipcMain.handle('check-accessibility', () => checkAccessibilityPermission())
+ipcMain.handle('start-terminal-watcher', () => {
+  if (!checkAccessibilityPermission()) return { error: 'no_permission' }
+  startTerminalWatcher()
+  return { ok: true }
+})
+ipcMain.handle('stop-terminal-watcher', () => {
+  stopTerminalWatcher()
+  return { ok: true }
 })
 
 // Window controls
@@ -275,6 +388,9 @@ app.whenReady().then(() => {
   createWindow()
   createTray()
   setupAutoUpdater()
+
+  // Auto-start terminal watcher if accessibility permission already granted
+  if (checkAccessibilityPermission()) startTerminalWatcher()
 
   // Restore clipboard watcher if it was on
   if (config.clipboardWatcher) startClipboardWatcher()

@@ -116,6 +116,13 @@ function bindEvents () {
 }
 
 function bindIpcListeners () {
+  // Terminal watcher — auto-scan new CLI output
+  window.nano.onTerminalContent(({ text, source }) => {
+    if (text && text.length > 50) {
+      runScan(text, `terminal_${source}`)
+    }
+  })
+
   // Clipboard watcher — auto-scan when content changes
   window.nano.onClipboardChanged(({ text }) => {
     if (state.clipboardEnabled && text && text.length > 50) {
@@ -197,8 +204,29 @@ async function onboardingSubmit () {
   showScreen('main')
   renderFeed()
 
+  // Request accessibility permission for terminal watching
+  await requestTerminalWatch()
+
   // Fire an opening scan on the project description itself
   setTimeout(() => runScan(project, 'project_description'), 800)
+}
+
+async function requestTerminalWatch () {
+  const hasPermission = await window.nano.checkAccessibility()
+  if (hasPermission) {
+    await window.nano.startTerminalWatcher()
+    setStatus('Watching terminal...')
+    return
+  }
+  // Show one-time prompt explaining why we need it
+  const granted = confirm(
+    'NanoBot watches your Claude Code / Codex terminal to catch blindspots automatically.\n\n' +
+    'Click OK to open System Settings → Privacy → Accessibility, then enable NanoBot.\n\n' +
+    'You can skip this and use manual paste scanning instead.'
+  )
+  if (granted) {
+    window.nano.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')
+  }
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
