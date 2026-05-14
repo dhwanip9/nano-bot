@@ -142,9 +142,10 @@ function createWindow () {
 function createTray () {
   // Use a simple template image; in production this would be a real icon file
   const iconPath = path.join(__dirname, 'assets', 'tray-icon.png')
-  const icon = fs.existsSync(iconPath)
+  let icon = fs.existsSync(iconPath)
     ? nativeImage.createFromPath(iconPath)
     : nativeImage.createEmpty()
+  icon = icon.resize({ width: 16, height: 16 })
 
   tray = new Tray(icon)
   tray.setToolTip('NanoBot')
