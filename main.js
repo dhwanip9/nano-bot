@@ -6,8 +6,8 @@ const os = require('os')
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const CONFIG_PATH = path.join(os.homedir(), '.claude-buddy', 'config.json')
-const SESSION_PATH = path.join(os.homedir(), '.claude-buddy', 'session.json')
+const CONFIG_PATH = path.join(os.homedir(), '.nano-bot', 'config.json')
+const SESSION_PATH = path.join(os.homedir(), '.nano-bot', 'session.json')
 const BLINDSPOTS_PATH = path.join(__dirname, 'blindspots.v2.json')
 const WINDOW_WIDTH = 380
 const WINDOW_HEIGHT = 600
@@ -146,13 +146,14 @@ function createTray () {
     ? nativeImage.createFromPath(iconPath)
     : nativeImage.createEmpty()
   icon = icon.resize({ width: 16, height: 16 })
+  icon.setTemplateImage(true)
 
   tray = new Tray(icon)
   tray.setToolTip('NanoBot')
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Show NanoBot', click: () => { if (mainWindow) mainWindow.show() } },
-    { label: 'Hide NanoBot', click: () => { if (mainWindow) mainWindow.hide() } },
+    { label: 'Show Nano', click: () => { if (mainWindow) mainWindow.show() } },
+    { label: 'Hide Nano', click: () => { if (mainWindow) mainWindow.hide() } },
     { type: 'separator' },
     { label: 'New Session', click: () => {
       saveSession({
@@ -251,7 +252,7 @@ ipcMain.handle('anthropic-chat', async (_, { messages, systemPrompt, apiKey: key
     const Anthropic = require('@anthropic-ai/sdk')
     const client = new Anthropic({ apiKey: key })
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system: systemPrompt,
       messages

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;" />
-  <title>Claude Buddy</title>
+  <title>NanoBot</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
@@ -17,13 +17,13 @@
   <!-- ── Onboarding screen ── -->
   <div id="screen-onboarding" class="screen active">
     <div class="onboarding-wrap">
-      <div class="buddy-avatar large">
+      <div class="nano-avatar large">
         <div class="avatar-face">
           <span class="avatar-eye left"></span>
           <span class="avatar-eye right"></span>
         </div>
       </div>
-      <h1 class="onboarding-title">Hey, I'm Buddy</h1>
+      <h1 class="onboarding-title">Hey, I'm Nano</h1>
       <p class="onboarding-sub">Your senior dev companion. I watch what you're building and ask the one question you didn't know to ask.</p>
 
       <div class="form-group">
@@ -62,14 +62,14 @@
     <!-- Header -->
     <div class="header">
       <div class="header-left">
-        <div class="buddy-avatar small" id="avatar-main">
+        <div class="nano-avatar small" id="avatar-main">
           <div class="avatar-face">
             <span class="avatar-eye left"></span>
             <span class="avatar-eye right"></span>
           </div>
         </div>
         <div class="header-text">
-          <span class="header-title">Claude Buddy</span>
+          <span class="header-title">NanoBot</span>
           <span class="header-status" id="header-status">Watching...</span>
         </div>
       </div>
@@ -162,6 +162,6 @@
     </div>
   </div>
 
-  <script src="buddy.js"></script>
+  <script src="nano.js"></script>
 </body>
 </html>

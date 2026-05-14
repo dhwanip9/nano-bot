@@ -1,4 +1,4 @@
-# Claude Buddy 🤖
+# Nano Bot 🤖
 
 A floating desktop companion that watches your Claude/Codex sessions and surfaces the blindspots that novice builders don't know to ask about.
 

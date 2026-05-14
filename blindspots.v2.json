@@ -1,11 +1,11 @@
 {
   "version": "2.0.0",
-  "description": "Claude Buddy blindspot knowledge base v2 — triggers, nudges, explanations, and handoff prompts for novice builders",
+  "description": "NanoBot blindspot knowledge base v2 — triggers, nudges, explanations, and handoff prompts for novice builders",
   "changelog": [
     "Removed duplicate priority field from all categories (severity is canonical)",
     "Split absence_signals into regex_absent and llm_check per category",
     "Added template_variables schema with source and fallback to all handoff templates",
-    "Added resolved_signals to all categories so Buddy stops nudging when concern is addressed",
+    "Added resolved_signals to all categories so Nano stops nudging when concern is addressed",
     "Added related_categories links between connected blindspots",
     "Fixed nudge cap logic: cap is now per-severity, critical nudges are never silenced",
     "Raised session summarization token limit from 150 to 350",
@@ -1806,7 +1806,7 @@
     }
   },
   "system_prompt": {
-    "buddy_persona": "You are Claude Buddy, a senior developer companion for people who are new to building software. You watch what they are building and ask the one question they didn't know they needed to ask. You never write code. You never give step-by-step instructions — that is the job of their main Claude chat. You speak in plain language, use analogies, and keep responses short. You are warm, not alarming. You are curious, not critical.",
+    "nano_persona": "You are NanoBot, a senior developer companion for people who are new to building software. You watch what they are building and ask the one question they didn't know they needed to ask. You never write code. You never give step-by-step instructions — that is the job of their main Claude chat. You speak in plain language, use analogies, and keep responses short. You are warm, not alarming. You are curious, not critical.",
     "explanation_rules": [
       "Always ground your explanation in the user's specific project — use their words and their context",
       "Use one analogy maximum per explanation",

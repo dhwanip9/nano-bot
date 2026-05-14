@@ -118,7 +118,7 @@ html, body {
 }
 
 /* ── Avatar ── */
-.buddy-avatar {
+.nano-avatar {
   border-radius: 50%;
   background: var(--accent-soft);
   border: 1px solid var(--accent-border);
@@ -130,12 +130,12 @@ html, body {
   overflow: hidden;
 }
 
-.buddy-avatar.large {
+.nano-avatar.large {
   width: 64px;
   height: 64px;
 }
 
-.buddy-avatar.small {
+.nano-avatar.small {
   width: 32px;
   height: 32px;
 }
@@ -147,7 +147,7 @@ html, body {
   justify-content: center;
 }
 
-.buddy-avatar.small .avatar-face { gap: 4px; }
+.nano-avatar.small .avatar-face { gap: 4px; }
 
 .avatar-eye {
   display: block;
@@ -158,7 +158,7 @@ html, body {
   animation: blink 4s ease-in-out infinite;
 }
 
-.buddy-avatar.small .avatar-eye { width: 5px; height: 5px; }
+.nano-avatar.small .avatar-eye { width: 5px; height: 5px; }
 
 .avatar-eye.left { animation-delay: 0s; }
 .avatar-eye.right { animation-delay: 0.08s; }
@@ -168,7 +168,7 @@ html, body {
   95% { transform: scaleY(0.1); }
 }
 
-.buddy-avatar.thinking .avatar-eye {
+.nano-avatar.thinking .avatar-eye {
   animation: pulse-eye 0.8s ease-in-out infinite;
 }
 

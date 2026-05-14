@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 // Expose a clean, typed API to the renderer — no raw IPC, no Node access
-contextBridge.exposeInMainWorld('buddy', {
+contextBridge.exposeInMainWorld('nano', {
 
   // ── Config ──────────────────────────────────────────────────────────────────
   getConfig: () => ipcRenderer.invoke('get-config'),
