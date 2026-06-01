@@ -4,6 +4,9 @@ A floating desktop companion that watches your Claude Code and Codex CLI session
 
 Nano never writes code. It asks the one question you didn't know you needed to ask — then hands you a ready-to-paste prompt to take back to your main chat.
 
+<!-- Replace with a real screenshot or GIF of the app in action -->
+<!-- ![NanoBot in action](docs/demo.gif) -->
+
 ---
 
 ## What Nano does
@@ -57,20 +60,22 @@ When NanoBot opens, you'll see three fields:
 
 Click **Start watching →**
 
-### Step 5 — Grant terminal access (one time)
+### Step 5 — Grant terminal access (one time, Mac only)
 
 NanoBot will ask for Accessibility permission so it can watch your Claude Code and Codex terminal sessions automatically. Click OK when prompted and enable NanoBot in System Settings → Privacy → Accessibility.
 
 Restart the app once after granting permission — Nano will start watching your terminal from then on.
 
+> **Windows / Linux**: Automatic terminal watching is not available (it uses macOS AppleScript). Use the clipboard watcher or manual paste instead.
+
 ---
 
 ## How to use it
 
-**Auto-watch (default)**
+**Auto-watch (default, Mac only)**
 Open a terminal and run `claude` or `codex` as normal. NanoBot watches in the background and surfaces a nudge when it spots something worth thinking about. No extra steps.
 
-**Manual scan (optional)**
+**Manual scan (all platforms)**
 Copy any text and paste it into NanoBot's scan box, or toggle "Auto-watch clipboard" to scan automatically when you copy something new.
 
 **When a nudge appears:**
@@ -82,7 +87,7 @@ Copy any text and paste it into NanoBot's scan box, or toggle "Auto-watch clipbo
 
 ---
 
-## Running from source (developers)
+## Running from source
 
 ```bash
 # Prerequisites: Node.js 18+
@@ -101,14 +106,53 @@ npm run build:linux  # Linux AppImage + deb
 
 ---
 
+## How it works (for developers)
+
+NanoBot is an Electron app with three layers:
+
+**`main.js`** — the main process. Handles the window, tray, clipboard polling, AppleScript terminal watching, and proxies all Anthropic API calls. The API key never touches the renderer.
+
+**`renderer/nano.js`** — all UI logic. Runs the scan pipeline, manages the speech bubble state machine, handles the 2-exchange conversation flow, and builds handoff prompts.
+
+**`blindspots.v2.json`** — the brain. Contains all 20 blindspot categories, each with keyword triggers, regex patterns, nudge text, plain-language explanations, and handoff prompt templates. Also contains Nano's system prompt and persona rules. **This is the main file to edit if you want to change Nano's behavior, add new categories, or retarget it for a different domain.**
+
+### Want to fork it for your own use case?
+
+The quickest path:
+1. Edit `blindspots.v2.json` — change the categories to match your domain, update `system_prompt.nano_persona` to give Nano a different personality or focus
+2. Swap `assets/nanobot.png` with your own character (1024×1024 PNG, transparent background)
+3. Update `package.json` — change `appId`, `productName`, and the `publish` owner/repo fields
+4. Run `npm run build:mac` (or win/linux) to get your own distributable
+
+### Scan pipeline
+
+```
+terminal output / clipboard / manual paste
+        ↓
+detectTriggeredCategories()   — keyword + regex match against all 20 categories
+        ↓ (no match)
+claudeSoftScan()              — LLM fallback: asks Claude which category fits
+        ↓
+setPendingNudge()             — picks highest severity unresolved category
+        ↓
+openNudgeBubble()             — Claude generates a contextual explanation using
+                                the actual flagged snippet + project description
+        ↓
+2-exchange conversation cap   — then generates a filled handoff prompt
+```
+
+---
+
 ## Where Nano stores data
 
 Everything stays on your machine:
 - Config (API key, project description): `~/.nano-bot/config.json`
 - Session memory: `~/.nano-bot/session.json`
-- Blindspot knowledge base: bundled with the app
+- Blindspot knowledge base: bundled with the app at `blindspots.v2.json`
 
 Nano never sends your data anywhere except directly to Anthropic's API when it scans. Your Claude.ai login is never accessed or required.
+
+**Debugging tip**: if Nano is behaving unexpectedly, check `~/.nano-bot/session.json` to see what it has recorded for the current session, or delete it to start fresh (same as "New Session" in the tray menu).
 
 ---
 
