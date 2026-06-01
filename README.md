@@ -1,4 +1,5 @@
 # NanoBot
+<img width="189" height="171" alt="Screenshot 2026-06-01 at 3 13 39 PM" src="https://github.com/user-attachments/assets/503a96c2-c707-4d63-8ffe-5ad3e6e3be29" />
 
 A floating desktop companion that watches your Claude Code and Codex CLI sessions and surfaces the blindspots that novice builders don't know to ask about.
 
@@ -71,6 +72,8 @@ Restart the app once after granting permission — Nano will start watching your
 ---
 
 ## How to use it
+<img width="385" height="356" alt="Screenshot 2026-06-01 at 3 13 46 PM" src="https://github.com/user-attachments/assets/f3db001e-e3ba-47a4-9019-4be145c569fd" />
+
 
 **Auto-watch (default, Mac only)**
 Open a terminal and run `claude` or `codex` as normal. NanoBot watches in the background and surfaces a nudge when it spots something worth thinking about. No extra steps.
@@ -140,6 +143,12 @@ openNudgeBubble()             — Claude generates a contextual explanation usin
         ↓
 2-exchange conversation cap   — then generates a filled handoff prompt
 ```
+
+<img width="348" height="496" alt="Screenshot 2026-06-01 at 3 14 28 PM" src="https://github.com/user-attachments/assets/a4c48afe-176b-418f-8565-ab22c53a2e55" />
+
+<img width="376" height="490" alt="Screenshot 2026-06-01 at 3 15 20 PM" src="https://github.com/user-attachments/assets/f9373b8d-5d06-41a3-8b6e-5e2c4c010df3" />
+
+<img width="308" height="481" alt="Screenshot 2026-06-01 at 3 15 55 PM" src="https://github.com/user-attachments/assets/246199d6-7a05-4e7c-8dd8-e1780417087e" />
 
 ---
 
