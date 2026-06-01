@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('nano', {
   hide: () => ipcRenderer.invoke('hide-window'),
   toggleAlwaysOnTop: (flag) => ipcRenderer.invoke('toggle-always-on-top', flag),
   dragWindow: (pos) => ipcRenderer.invoke('window-drag', pos),
+  getWindowPosition: () => ipcRenderer.invoke('get-window-position'),
+  setWindowPosition: (pos) => ipcRenderer.invoke('set-window-position', pos),
+  resizeWindow: (size) => ipcRenderer.invoke('resize-window', size),
 
   // ── External links ───────────────────────────────────────────────────────────
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
@@ -44,6 +47,9 @@ contextBridge.exposeInMainWorld('nano', {
   },
   onSessionReset: (callback) => {
     ipcRenderer.on('session-reset', () => callback())
+  },
+  onHeartbeat: (callback) => {
+    ipcRenderer.on('heartbeat', () => callback())
   },
 
   // ── Cleanup ──────────────────────────────────────────────────────────────────

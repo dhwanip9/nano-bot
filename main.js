@@ -9,8 +9,9 @@ const os = require('os')
 const CONFIG_PATH = path.join(os.homedir(), '.nano-bot', 'config.json')
 const SESSION_PATH = path.join(os.homedir(), '.nano-bot', 'session.json')
 const BLINDSPOTS_PATH = path.join(__dirname, 'blindspots.v2.json')
-const WINDOW_WIDTH = 380
-const WINDOW_HEIGHT = 600
+const CREATURE_W = 100
+const CREATURE_H = 100
+const BUBBLE_W = 310
 const CLIPBOARD_POLL_MS = 1500
 const CONFIG_DEFAULTS = {
   apiKey: '',
@@ -95,16 +96,16 @@ function createWindow () {
   const { workArea } = screen.getPrimaryDisplay()
 
   // Default position: bottom-right corner
-  const defaultX = workArea.x + workArea.width - WINDOW_WIDTH - 20
-  const defaultY = workArea.y + workArea.height - WINDOW_HEIGHT - 20
+  const defaultX = workArea.x + workArea.width - CREATURE_W - 20
+  const defaultY = workArea.y + workArea.height - CREATURE_H - 20
 
   const savedPos = config.windowPosition
   const x = savedPos ? savedPos.x : defaultX
   const y = savedPos ? savedPos.y : defaultY
 
   mainWindow = new BrowserWindow({
-    width: WINDOW_WIDTH,
-    height: WINDOW_HEIGHT,
+    width: CREATURE_W,
+    height: CREATURE_H,
     x,
     y,
     frame: false,
@@ -360,6 +361,31 @@ ipcMain.handle('window-drag', (_, { x, y }) => {
   }
 })
 
+// Window position get/set (for drag)
+ipcMain.handle('get-window-position', () => {
+  if (!mainWindow) return { x: 0, y: 0 }
+  const [x, y] = mainWindow.getPosition()
+  return { x, y }
+})
+
+ipcMain.handle('set-window-position', (_, { x, y }) => {
+  if (!mainWindow) return
+  mainWindow.setPosition(Math.round(x), Math.round(y))
+  saveConfig({ windowPosition: { x: Math.round(x), y: Math.round(y) } })
+})
+
+// Dynamic resize — anchors bottom-right corner (creature stays in place)
+ipcMain.handle('resize-window', (_, { width, height }) => {
+  if (!mainWindow) return
+  const [x, y] = mainWindow.getPosition()
+  const [oldW, oldH] = mainWindow.getSize()
+  const { workArea } = screen.getPrimaryDisplay()
+  const newX = Math.max(workArea.x, x + oldW - width)
+  const newY = Math.max(workArea.y, y + oldH - height)
+  mainWindow.setSize(Math.round(width), Math.round(height))
+  mainWindow.setPosition(Math.round(newX), Math.round(newY))
+})
+
 // Open external links
 ipcMain.handle('open-external', (_, url) => { shell.openExternal(url) })
 
@@ -400,6 +426,11 @@ app.whenReady().then(() => {
 
   // Restore clipboard watcher if it was on
   if (config.clipboardWatcher) startClipboardWatcher()
+
+  // Proactive heartbeat — renderer checks if anything is worth flagging
+  setInterval(() => {
+    if (mainWindow) mainWindow.webContents.send('heartbeat')
+  }, 3 * 60 * 1000)
 })
 
 app.on('window-all-closed', () => {

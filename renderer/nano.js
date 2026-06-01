@@ -1,41 +1,120 @@
 'use strict'
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const BUBBLE_W   = 310
+const CREATURE_H = 100
+
 // ─── State ────────────────────────────────────────────────────────────────────
 
 const state = {
-  config: {},
-  blindspots: {},
-  session: {},
-  currentScreen: 'onboarding',
-  activeNudgeId: null,      // category id currently open in detail screen
-  exchangeCount: 0,         // per-nudge exchange count (max 2 before handoff)
-  isThinking: false,
-  nudgeCards: [],           // rendered nudge card ids in the feed
-  clipboardEnabled: false
+  config:           {},
+  blindspots:       {},
+  session:          {},
+  bubbleOpen:       false,
+  bubbleMode:       null,   // 'onboarding' | 'idle' | 'nudge' | 'settings'
+  pendingNudge:        null,   // category id waiting for user
+  pendingNudgeSnippet: null,   // excerpt that triggered the nudge
+  activeNudge:             null,   // category id currently in bubble
+  activeNudgeExplanation:  null,   // Claude-generated explanation for current nudge
+  exchangeCount:    0,
+  isThinking:       false,
+  clipboardEnabled: false,
+  needsPermission:  false,
+  updateReady:      false
 }
-
-// ─── DOM refs ─────────────────────────────────────────────────────────────────
 
 const $ = id => document.getElementById(id)
-const screens = {
-  onboarding: $('screen-onboarding'),
-  main:       $('screen-main'),
-  settings:   $('screen-settings'),
-  nudge:      $('screen-nudge')
+
+// ─── Creature state ───────────────────────────────────────────────────────────
+
+function setCreatureState (s) {
+  const sprite = $('nanobot')
+  if (sprite) sprite.setAttribute('class', s)   // 'idle' | 'think' | 'nudge' | 'happy'
+
+  const dot = $('nudge-dot')
+  if (dot) dot.classList.toggle('visible', s === 'nudge')
+
+  const sd = $('status-dot')
+  if (sd) {
+    sd.className = ''
+    if (s === 'think')  sd.classList.add('thinking')
+    else if (s !== 'nudge') sd.classList.add('watching')
+  }
 }
 
-// ─── Screen navigation ────────────────────────────────────────────────────────
+// ─── Bubble management ────────────────────────────────────────────────────────
 
-function showScreen (name) {
-  const prev = state.currentScreen
-  if (prev === name) return
-  if (screens[prev]) {
-    screens[prev].classList.remove('active')
-    screens[prev].classList.add('slide-out')
-    setTimeout(() => screens[prev]?.classList.remove('slide-out'), 300)
+async function openBubble (html) {
+  const body = $('bubble-body')
+  if (!body) return
+  body.innerHTML = html
+  const bubble = $('bubble')
+  bubble.classList.remove('hidden')
+  state.bubbleOpen = true
+  // Measure actual rendered height after layout
+  await new Promise(resolve => requestAnimationFrame(resolve))
+  const bubbleH = bubble.offsetHeight
+  await window.nano.resizeWindow({ width: BUBBLE_W, height: bubbleH + 8 + CREATURE_H })
+}
+
+async function closeBubble () {
+  const bubble = $('bubble')
+  if (bubble) bubble.classList.add('hidden')
+  const body = $('bubble-body')
+  if (body) body.innerHTML = ''
+  state.bubbleOpen = false
+  state.bubbleMode = null
+  await window.nano.resizeWindow({ width: CREATURE_H, height: CREATURE_H })
+}
+
+// ─── Drag (OpenClippy pattern) ────────────────────────────────────────────────
+
+function initDrag () {
+  const creature = $('creature')
+  if (!creature) return
+
+  let dragStartX, dragStartY, winStartX, winStartY, isDragging = false
+
+  creature.addEventListener('mousedown', async e => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    dragStartX = e.screenX
+    dragStartY = e.screenY
+    const pos = await window.nano.getWindowPosition()
+    winStartX = pos.x
+    winStartY = pos.y
+    isDragging = false
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  })
+
+  function onMove (e) {
+    const dx = e.screenX - dragStartX
+    const dy = e.screenY - dragStartY
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) isDragging = true
+    if (isDragging) window.nano.setWindowPosition({ x: winStartX + dx, y: winStartY + dy })
   }
-  screens[name].classList.add('active')
-  state.currentScreen = name
+
+  function onUp () {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    if (!isDragging) handleCreatureClick()
+    isDragging = false
+  }
+
+  creature.addEventListener('contextmenu', e => {
+    e.preventDefault()
+    if (state.bubbleMode === 'settings') closeBubble()
+    else { closeBubble().then(() => openSettingsBubble()) }
+  })
+}
+
+function handleCreatureClick () {
+  if (state.isThinking) return
+  if (state.bubbleOpen) { closeBubble(); return }
+  if (state.pendingNudge) { openNudgeBubble(state.pendingNudge); return }
+  openIdleBubble()
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -45,93 +124,45 @@ async function init () {
   state.blindspots = await window.nano.getBlindspots()
   state.session    = await window.nano.getSession()
 
-  if (state.config.onboardingComplete && state.config.apiKey) {
-    applyConfig()
-    showScreen('main')
-    renderFeed()
-    await requestTerminalWatch()
-  } else {
-    showScreen('onboarding')
-  }
-
-  bindEvents()
+  initDrag()
   bindIpcListeners()
+  initUpdaterUI()
+
+  if (!state.config.onboardingComplete || !state.config.apiKey) {
+    openOnboardingBubble()
+  } else {
+    setCreatureState('idle')
+    await requestTerminalWatch()
+    setTimeout(() => {
+      if (state.config.projectDescription) {
+        runScan(state.config.projectDescription, 'project_description')
+      }
+    }, 1200)
+  }
 }
 
-// ─── Apply config to UI ───────────────────────────────────────────────────────
+// ─── Terminal watcher ─────────────────────────────────────────────────────────
 
-function applyConfig () {
-  const proj = state.config.projectDescription || 'Your project'
-  const pill = $('project-pill-text')
-  if (pill) pill.textContent = proj.length > 40 ? proj.slice(0, 38) + '…' : proj
-  setStatus('Watching...')
+async function requestTerminalWatch () {
+  const hasPermission = await window.nano.checkAccessibility()
+  if (hasPermission) {
+    await window.nano.startTerminalWatcher()
+  } else {
+    state.needsPermission = true
+  }
 }
 
-// ─── Status ───────────────────────────────────────────────────────────────────
-
-function setStatus (text, type = '') {
-  const el = $('header-status')
-  if (!el) return
-  el.textContent = text
-  el.className = 'header-status' + (type ? ' ' + type : '')
-}
-
-// ─── Event bindings ───────────────────────────────────────────────────────────
-
-function bindEvents () {
-  // Onboarding
-  $('btn-start')?.addEventListener('click', onboardingSubmit)
-  $('link-get-key')?.addEventListener('click', e => {
-    e.preventDefault()
-    window.nano.openExternal('https://console.anthropic.com/settings/keys')
-  })
-
-  // Header controls
-  $('btn-settings')?.addEventListener('click', () => {
-    populateSettings()
-    showScreen('settings')
-  })
-  $('btn-minimize')?.addEventListener('click', () => window.nano.minimize())
-  $('btn-hide')?.addEventListener('click', () => window.nano.hide())
-
-  // Scan
-  $('btn-scan')?.addEventListener('click', handleScan)
-  $('scan-input')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && e.metaKey) handleScan()
-  })
-
-  // Clipboard toggle
-  $('toggle-clipboard')?.addEventListener('change', async e => {
-    const enabled = e.target.checked
-    await window.nano.setClipboardWatcher(enabled)
-    state.clipboardEnabled = enabled
-  })
-
-  // Settings
-  $('btn-back-settings')?.addEventListener('click', () => showScreen('main'))
-  $('btn-save-settings')?.addEventListener('click', saveSettings)
-  $('btn-new-session')?.addEventListener('click', resetSession)
-
-  // Nudge detail
-  $('btn-back-nudge')?.addEventListener('click', () => showScreen('main'))
-}
+// ─── IPC listeners ────────────────────────────────────────────────────────────
 
 function bindIpcListeners () {
-  // Terminal watcher — auto-scan new CLI output
-  window.nano.onTerminalContent(({ text, source }) => {
-    if (text && text.length > 50) {
-      runScan(text, `terminal_${source}`)
-    }
+  window.nano.onTerminalContent(({ text }) => {
+    if (text && text.length > 50) runScan(text, 'terminal')
   })
 
-  // Clipboard watcher — auto-scan when content changes
   window.nano.onClipboardChanged(({ text }) => {
-    if (state.clipboardEnabled && text && text.length > 50) {
-      runScan(text, 'clipboard')
-    }
+    if (state.clipboardEnabled && text && text.length > 50) runScan(text, 'clipboard')
   })
 
-  // Session reset from tray
   window.nano.onSessionReset(() => {
     state.session = {
       projectDescription: state.config.projectDescription,
@@ -141,57 +172,86 @@ function bindIpcListeners () {
       summary: '',
       startedAt: new Date().toISOString()
     }
-    state.nudgeCards = []
-    renderFeed()
-    setStatus('New session started')
-    setTimeout(() => setStatus('Watching...'), 2000)
+    state.pendingNudge = null
+    setCreatureState('idle')
+    if (state.bubbleOpen) closeBubble()
+  })
+
+  window.nano.onHeartbeat(() => {
+    if (state.pendingNudge || state.isThinking || state.bubbleOpen) return
+    if (!state.session.exchanges || state.session.exchanges.length === 0) return
+    const ctx = `Project: ${state.config.projectDescription}\nSession: ${state.session.summary || 'just started'}`
+    runScan(ctx, 'heartbeat')
   })
 }
 
-// ─── Onboarding ───────────────────────────────────────────────────────────────
+// ─── Onboarding bubble ────────────────────────────────────────────────────────
+
+function openOnboardingBubble () {
+  state.bubbleMode = 'onboarding'
+  const html = `
+    <h2 class="ob-title">Hi, I'm Nano 👋</h2>
+    <p class="ob-sub">I watch your Claude Code and Codex sessions and flag blindspots you didn't know to ask about. Set me up in 2 minutes.</p>
+    <div class="field">
+      <label class="field-label">Anthropic API key</label>
+      <input type="password" class="field-input" id="ob-key" placeholder="sk-ant-..." />
+      <button class="field-link" id="ob-get-key">Get a free key →</button>
+    </div>
+    <div class="field">
+      <label class="field-label">What are you building?</label>
+      <textarea class="field-textarea" id="ob-project" rows="2" placeholder="e.g. a task manager with React and a Node backend..."></textarea>
+    </div>
+    <div class="field">
+      <label class="field-label">Your experience level</label>
+      <div class="radio-row">
+        <label class="radio-opt"><input type="radio" name="ob-skill" value="novice" checked /> Novice</label>
+        <label class="radio-opt"><input type="radio" name="ob-skill" value="some" /> Some coding</label>
+        <label class="radio-opt"><input type="radio" name="ob-skill" value="dev" /> Developer</label>
+      </div>
+    </div>
+    <p class="err-msg" id="ob-err"></p>
+    <button class="btn-primary" id="ob-submit">Start watching →</button>
+  `
+  openBubble(html)
+  requestAnimationFrame(() => {
+    $('ob-get-key')?.addEventListener('click', () => {
+      window.nano.openExternal('https://console.anthropic.com/settings/keys')
+    })
+    $('ob-submit')?.addEventListener('click', onboardingSubmit)
+  })
+}
 
 async function onboardingSubmit () {
-  const apiKey  = $('input-api-key')?.value.trim()
-  const project = $('input-project')?.value.trim()
-  const skill   = document.querySelector('input[name="skill"]:checked')?.value || 'novice'
+  const apiKey  = $('ob-key')?.value.trim()
+  const project = $('ob-project')?.value.trim()
+  const skill   = document.querySelector('input[name="ob-skill"]:checked')?.value || 'novice'
+  const errEl   = $('ob-err')
+  const btn     = $('ob-submit')
 
-  if (!apiKey) {
-    $('input-api-key').style.borderColor = 'var(--danger)'
-    return
-  }
-  if (!project) {
-    $('input-project').style.borderColor = 'var(--danger)'
-    return
-  }
+  if (errEl) errEl.style.display = 'none'
+  if (!apiKey)  { $('ob-key')?.classList.add('error'); return }
+  if (!project) { $('ob-project')?.classList.add('error'); return }
 
-  const btn = $('btn-start')
-  btn.textContent = 'Setting up...'
+  btn.textContent = 'Connecting...'
   btn.disabled = true
 
-  // Test the API key before saving
   const result = await window.nano.chat({
     messages: [{ role: 'user', content: 'Reply with the single word: ready' }],
-    systemPrompt: 'You are a test. Reply only with the single word: ready',
+    systemPrompt: 'Reply only: ready',
     apiKey
   })
 
   if (result.error) {
     btn.textContent = 'Start watching →'
     btn.disabled = false
-    $('input-api-key').style.borderColor = 'var(--danger)'
-    alert('Could not connect: ' + result.error)
+    if (errEl) { errEl.textContent = 'Could not connect: ' + result.error; errEl.style.display = 'block' }
     return
   }
 
-  // Save config
   state.config = await window.nano.saveConfig({
-    apiKey,
-    projectDescription: project,
-    skillLevel: skill,
-    onboardingComplete: true
+    apiKey, projectDescription: project, skillLevel: skill, onboardingComplete: true
   })
 
-  // Init session
   state.session = {
     projectDescription: project,
     exchanges: [],
@@ -202,164 +262,337 @@ async function onboardingSubmit () {
   }
   await window.nano.saveSession(state.session)
 
-  applyConfig()
-  showScreen('main')
-  renderFeed()
+  await closeBubble()
+  setCreatureState('happy')
+  setTimeout(() => setCreatureState('idle'), 1500)
 
-  // Request accessibility permission for terminal watching
   await requestTerminalWatch()
-
-  // Fire an opening scan on the project description itself
-  setTimeout(() => runScan(project, 'project_description'), 800)
+  setTimeout(() => runScan(project, 'project_description'), 1000)
 }
 
-async function requestTerminalWatch () {
-  const hasPermission = await window.nano.checkAccessibility()
-  if (hasPermission) {
-    await window.nano.startTerminalWatcher()
-    setStatus('Watching terminal...')
+// ─── Idle bubble ─────────────────────────────────────────────────────────────
+
+function openIdleBubble () {
+  state.bubbleMode = 'idle'
+
+  const permHtml = state.needsPermission ? `
+    <div class="perm-banner">
+      <strong>Terminal access needed</strong> — lets me watch your Claude Code sessions automatically.
+      <div class="perm-actions">
+        <button class="btn-perm" id="idle-grant">Enable in Settings</button>
+        <button class="btn-perm-dismiss" id="idle-skip-perm">Skip</button>
+      </div>
+    </div>` : ''
+
+  const updateHtml = state.updateReady ? `
+    <div class="update-banner">
+      <span>Update ready</span>
+      <button class="btn-update" id="idle-update">Restart</button>
+    </div>` : ''
+
+  const html = `
+    <button class="bubble-close" id="idle-close">✕</button>
+    ${updateHtml}
+    ${permHtml}
+    <p class="idle-status">Watching your terminal. Paste to scan manually:</p>
+    <textarea class="scan-ta" id="idle-ta" placeholder="Paste code or text here..."></textarea>
+    <div class="scan-row">
+      <button class="btn-scan" id="idle-scan">Scan</button>
+      <label class="clip-toggle">
+        <input type="checkbox" id="idle-clip" ${state.clipboardEnabled ? 'checked' : ''} />
+        Auto-watch clipboard
+      </label>
+    </div>
+    <div class="idle-footer">
+      <button class="btn-secondary" id="idle-settings" style="font-size:11px;padding:4px 10px;">⚙ Settings</button>
+    </div>
+  `
+  openBubble(html)
+  requestAnimationFrame(() => {
+    $('idle-close')?.addEventListener('click', closeBubble)
+    $('idle-scan')?.addEventListener('click', handleIdleScan)
+    $('idle-ta')?.addEventListener('keydown', e => { if (e.key === 'Enter' && e.metaKey) handleIdleScan() })
+    $('idle-clip')?.addEventListener('change', async e => {
+      state.clipboardEnabled = e.target.checked
+      await window.nano.setClipboardWatcher(e.target.checked)
+    })
+    $('idle-settings')?.addEventListener('click', () => closeBubble().then(() => openSettingsBubble()))
+    $('idle-grant')?.addEventListener('click', async () => {
+      await window.nano.requestAccessibility()
+      window.nano.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')
+      state.needsPermission = false
+      closeBubble()
+    })
+    $('idle-skip-perm')?.addEventListener('click', () => {
+      state.needsPermission = false
+      closeBubble().then(() => openIdleBubble())
+    })
+    $('idle-update')?.addEventListener('click', () => window.updater?.installUpdate())
+  })
+}
+
+async function handleIdleScan () {
+  const ta = $('idle-ta')
+  const text = ta?.value.trim()
+  if (!text) return
+  ta.value = ''
+  await closeBubble()
+  await runScan(text, 'manual')
+}
+
+// ─── Nudge bubble ─────────────────────────────────────────────────────────────
+
+async function openNudgeBubble (categoryId) {
+  const cat = getCategoryById(categoryId)
+  if (!cat) return
+
+  state.bubbleMode  = 'nudge'
+  state.activeNudge = cat
+  state.exchangeCount = 0
+  const snippet = state.pendingNudgeSnippet
+  state.pendingNudge        = null
+  state.pendingNudgeSnippet = null
+  setCreatureState('idle')
+
+  const snippetHtml = snippet ? `
+    <div class="nudge-snippet">
+      <span class="nudge-snippet-label">spotted</span>
+      <code class="nudge-snippet-text">${snippet.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>
+    </div>` : ''
+
+  const html = `
+    <button class="bubble-close" id="nudge-close">✕</button>
+    <button class="back-btn" id="nudge-back">← back to scan</button>
+    ${snippetHtml}
+    <div id="nudge-explanation">
+      <div class="chat-msg"><div class="thinking-dots"><span></span><span></span><span></span></div></div>
+    </div>
+    <div id="nudge-chat"></div>
+    <div class="reply-row" id="nudge-reply-row" style="display:none">
+      <input type="text" class="reply-input" id="nudge-input" placeholder="Reply..." />
+      <button class="btn-send" id="nudge-send">Send</button>
+    </div>
+  `
+  await openBubble(html)
+
+  requestAnimationFrame(() => {
+    $('nudge-close')?.addEventListener('click', closeBubble)
+    $('nudge-back')?.addEventListener('click', () => closeBubble().then(() => openIdleBubble()))
+  })
+
+  // Ask Claude to explain this specific detection in context
+  const skillLabel = { novice: 'a complete non-developer', some: 'someone with some coding experience', dev: 'a developer' }[state.config.skillLevel] || 'a non-developer'
+  const snippetLine = snippet ? `\n\nThe exact line that caught my attention:\n"${snippet}"` : ''
+
+  const result = await window.nano.chat({
+    messages: [{
+      role: 'user',
+      content: `I'm building: ${state.config.projectDescription}${snippetLine}
+
+You flagged this as a "${cat.name}" concern (${cat.severity} severity).
+
+In 2–3 short sentences, tell me:
+1. What specifically is wrong with what I wrote above
+2. What could go wrong because of it
+
+Then ask me ONE follow-up question to understand my situation better so you can give me the right fix.
+
+I am ${skillLabel} — no jargon.`
+    }],
+    systemPrompt: buildSystemPrompt()
+  })
+
+  const expl = $('nudge-explanation')
+  if (expl) {
+    expl.innerHTML = result.error
+      ? `<div class="nudge-plain">${cat.explanation.plain}<br><br><em>${cat.explanation.follow_up_question}</em></div>`
+      : `<div class="nudge-plain">${result.content}</div>`
+  }
+
+  // Store the generated explanation for follow-up context
+  state.activeNudgeExplanation = result.content || cat.explanation.plain
+
+  // Resize to fit new content then show reply input
+  await new Promise(resolve => requestAnimationFrame(resolve))
+  const bubbleH = $('bubble')?.offsetHeight || 400
+  await window.nano.resizeWindow({ width: BUBBLE_W, height: bubbleH + 8 + CREATURE_H })
+
+  const replyRow = $('nudge-reply-row')
+  if (replyRow) replyRow.style.display = 'flex'
+
+  requestAnimationFrame(() => {
+    const sendFn = () => handleNudgeReply(cat)
+    $('nudge-send')?.addEventListener('click', sendFn)
+    $('nudge-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') sendFn() })
+    setTimeout(() => $('nudge-input')?.focus(), 200)
+  })
+}
+
+async function handleNudgeReply (cat) {
+  const input = $('nudge-input')
+  const userText = input?.value.trim()
+  if (!userText || state.isThinking) return
+
+  state.exchangeCount++
+  state.isThinking = true
+  setCreatureState('think')
+
+  const chat = $('nudge-chat')
+  const replyRow = $('nudge-reply-row')
+  if (replyRow) replyRow.style.display = 'none'
+
+  if (chat) {
+    const userEl = document.createElement('div')
+    userEl.className = 'chat-msg user'
+    userEl.textContent = userText
+    chat.appendChild(userEl)
+
+    const thinkEl = document.createElement('div')
+    thinkEl.className = 'chat-msg'
+    thinkEl.id = 'nudge-thinking'
+    thinkEl.innerHTML = '<div class="thinking-dots"><span></span><span></span><span></span></div>'
+    chat.appendChild(thinkEl)
+  }
+
+  const isFinal = state.exchangeCount >= 2
+  const messages = [{
+    role: 'user',
+    content: `Project: ${state.config.projectDescription}
+Category: ${cat.name}
+My explanation to them: "${state.activeNudgeExplanation || cat.explanation.plain}"
+User replied: "${userText}"
+
+Exchange ${state.exchangeCount} of 2. ${isFinal ? 'FINAL exchange — give a brief reply only, then stop.' : 'Give a brief, specific reply based on what they said.'}`
+  }]
+
+  const result = await window.nano.chat({ messages, systemPrompt: buildSystemPrompt() })
+  $('nudge-thinking')?.remove()
+
+  state.isThinking = false
+  setCreatureState('idle')
+
+  if (result.error) {
+    const errEl = document.createElement('div')
+    errEl.className = 'chat-msg'
+    errEl.style.color = 'var(--danger)'
+    errEl.textContent = 'API error — check your connection.'
+    chat?.appendChild(errEl)
+    if (replyRow) { replyRow.style.display = 'flex'; input.value = '' }
     return
   }
 
-  // Show inline banner instead of blocking alert
-  const banner = $('accessibility-banner')
-  if (banner) banner.style.display = 'block'
+  const respEl = document.createElement('div')
+  respEl.className = 'chat-msg'
+  respEl.textContent = result.content
+  chat?.appendChild(respEl)
 
-  $('btn-grant-access')?.addEventListener('click', async () => {
-    await window.nano.requestAccessibility()
-    window.nano.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')
-    if (banner) banner.style.display = 'none'
-    setStatus('Restart app after granting access')
+  state.session.exchanges.push({
+    role: 'assistant', content: result.content, categoryId: cat.id, timestamp: Date.now()
   })
 
-  $('btn-dismiss-access')?.addEventListener('click', () => {
-    if (banner) banner.style.display = 'none'
-  })
+  if (isFinal) {
+    const prompt = buildHandoffPrompt(cat)
+    const handoffEl = document.createElement('div')
+    handoffEl.innerHTML = `
+      <div class="handoff-box">
+        <div class="handoff-head">
+          <span class="handoff-label">Take to your main chat</span>
+          <button class="btn-copy" id="nudge-copy">Copy</button>
+        </div>
+        <div class="handoff-text">${prompt}</div>
+      </div>
+      <p class="watching-line">I'll keep watching.</p>
+    `
+    chat?.appendChild(handoffEl)
+
+    requestAnimationFrame(() => {
+      $('nudge-copy')?.addEventListener('click', () => {
+        navigator.clipboard.writeText(prompt)
+        const btn = $('nudge-copy')
+        if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { if ($('nudge-copy')) $('nudge-copy').textContent = 'Copy' }, 2000) }
+      })
+    })
+
+    if (!state.session.resolvedCategories) state.session.resolvedCategories = []
+    if (!state.session.resolvedCategories.includes(cat.id)) {
+      state.session.resolvedCategories.push(cat.id)
+    }
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    const bubbleH = $('bubble')?.offsetHeight || 500
+    window.nano.resizeWindow({ width: BUBBLE_W, height: bubbleH + 8 + CREATURE_H })
+  } else {
+    if (replyRow) { replyRow.style.display = 'flex'; input.value = '' }
+    setTimeout(() => $('nudge-input')?.focus(), 100)
+  }
+
+  await window.nano.saveSession(state.session)
 }
 
-// ─── Settings ─────────────────────────────────────────────────────────────────
+// ─── Settings bubble ──────────────────────────────────────────────────────────
 
-function populateSettings () {
-  const k = $('settings-api-key')
-  const p = $('settings-project')
-  if (k) k.value = state.config.apiKey || ''
-  if (p) p.value = state.config.projectDescription || ''
-  const skill = state.config.skillLevel || 'novice'
-  const radio = document.querySelector(`input[name="skill-settings"][value="${skill}"]`)
-  if (radio) radio.checked = true
+function openSettingsBubble () {
+  state.bubbleMode = 'settings'
+  const cfg = state.config
+  const html = `
+    <button class="bubble-close" id="set-close">✕</button>
+    <h3 class="settings-title">Settings</h3>
+    <div class="field">
+      <label class="field-label">API key</label>
+      <input type="password" class="field-input" id="set-key" value="${cfg.apiKey || ''}" />
+    </div>
+    <div class="field">
+      <label class="field-label">What are you building?</label>
+      <textarea class="field-textarea" id="set-project" rows="2">${cfg.projectDescription || ''}</textarea>
+    </div>
+    <div class="field">
+      <label class="field-label">Experience level</label>
+      <div class="radio-row">
+        <label class="radio-opt"><input type="radio" name="set-skill" value="novice" ${cfg.skillLevel === 'novice' ? 'checked' : ''} /> Novice</label>
+        <label class="radio-opt"><input type="radio" name="set-skill" value="some" ${cfg.skillLevel === 'some' ? 'checked' : ''} /> Some coding</label>
+        <label class="radio-opt"><input type="radio" name="set-skill" value="dev" ${cfg.skillLevel === 'dev' ? 'checked' : ''} /> Developer</label>
+      </div>
+    </div>
+    <button class="btn-primary" id="set-save">Save</button>
+    <p class="settings-section">Session</p>
+    <button class="btn-danger" id="set-reset">Start new session</button>
+  `
+  openBubble(html)
+  requestAnimationFrame(() => {
+    $('set-close')?.addEventListener('click', closeBubble)
+    $('set-save')?.addEventListener('click', saveSettings)
+    $('set-reset')?.addEventListener('click', resetSession)
+  })
 }
 
 async function saveSettings () {
-  const apiKey  = $('settings-api-key')?.value.trim()
-  const project = $('settings-project')?.value.trim()
-  const skill   = document.querySelector('input[name="skill-settings"]:checked')?.value || 'novice'
-
+  const apiKey  = $('set-key')?.value.trim()
+  const project = $('set-project')?.value.trim()
+  const skill   = document.querySelector('input[name="set-skill"]:checked')?.value || 'novice'
   state.config = await window.nano.saveConfig({ apiKey, projectDescription: project, skillLevel: skill })
-  applyConfig()
-  showScreen('main')
+  await closeBubble()
+  setCreatureState('happy')
+  setTimeout(() => setCreatureState('idle'), 1000)
 }
 
 async function resetSession () {
   state.session = {
     projectDescription: state.config.projectDescription,
-    exchanges: [],
-    resolvedCategories: [],
+    exchanges: [], resolvedCategories: [],
     nudgeCount: { critical: 0, high: 0, medium: 0, low: 0 },
-    summary: '',
-    startedAt: new Date().toISOString()
+    summary: '', startedAt: new Date().toISOString()
   }
-  state.nudgeCards = []
+  state.pendingNudge = null
   await window.nano.saveSession(state.session)
-  renderFeed()
-  showScreen('main')
-}
-
-// ─── Feed rendering ───────────────────────────────────────────────────────────
-
-function renderFeed () {
-  const feed = $('nudge-feed')
-  const empty = $('feed-empty')
-  if (!feed) return
-
-  // Remove old nudge cards (keep empty state el)
-  feed.querySelectorAll('.nudge-card').forEach(el => el.remove())
-
-  if (state.nudgeCards.length === 0) {
-    if (empty) empty.style.display = 'flex'
-    return
-  }
-
-  if (empty) empty.style.display = 'none'
-
-  state.nudgeCards.forEach(cardData => {
-    const card = buildNudgeCard(cardData)
-    feed.appendChild(card)
-  })
-}
-
-function buildNudgeCard ({ categoryId, nudgeText, severity, resolved }) {
-  const card = document.createElement('div')
-  card.className = `nudge-card severity-${severity}${resolved ? ' resolved' : ''}`
-  card.dataset.categoryId = categoryId
-
-  const cat = getCategoryById(categoryId)
-  const name = cat?.name || categoryId
-
-  card.innerHTML = `
-    <div class="nudge-card-top">
-      <span class="nudge-severity-dot"></span>
-      <span class="nudge-category">${name}</span>
-      <span class="nudge-expand-hint">${resolved ? '✓ resolved' : 'tap to explore →'}</span>
-    </div>
-    <div class="nudge-text">${nudgeText}</div>
-  `
-
-  card.addEventListener('click', () => {
-    if (!resolved) openNudgeDetail(categoryId)
-  })
-
-  return card
-}
-
-function addNudgeToFeed (categoryId, severity) {
-  const cat = getCategoryById(categoryId)
-  if (!cat) return
-
-  // Don't add if already in feed
-  if (state.nudgeCards.find(c => c.categoryId === categoryId)) return
-
-  const cardData = {
-    categoryId,
-    nudgeText: cat.nudge,
-    severity,
-    resolved: false
-  }
-
-  state.nudgeCards.unshift(cardData) // newest at top
-  renderFeed()
-}
-
-function markNudgeResolved (categoryId) {
-  const card = state.nudgeCards.find(c => c.categoryId === categoryId)
-  if (card) {
-    card.resolved = true
-    renderFeed()
-  }
+  await closeBubble()
+  setCreatureState('idle')
 }
 
 // ─── Scan engine ─────────────────────────────────────────────────────────────
 
-async function handleScan () {
-  const input = $('scan-input')
-  const text = input?.value.trim()
-  if (!text || state.isThinking) return
-  input.value = ''
-  await runScan(text, 'manual')
-}
-
 async function runScan (text, source) {
   if (state.isThinking) return
-  setThinking(true)
+  state.isThinking = true
+  setCreatureState('think')
 
   try {
     state.session.exchanges.push({ role: 'user', content: text, source, timestamp: Date.now() })
@@ -369,23 +602,55 @@ async function runScan (text, source) {
     if (triggered.length === 0) {
       await claudeSoftScan(text)
     } else {
-      const toNudge = pickBestNudge(triggered)
-      if (toNudge) {
-        addNudgeToFeed(toNudge.id, toNudge.severity)
-        bumpNudgeCount(toNudge.severity)
-      }
+      const best = pickBestNudge(triggered)
+      if (best) setPendingNudge(best.id, best.severity, extractTriggerSnippet(text, best))
     }
 
-    if (state.session.exchanges.length % 5 === 0) {
-      await summarizeSession()
-    }
-
+    if (state.session.exchanges.length % 5 === 0) await summarizeSession()
     await window.nano.saveSession(state.session)
   } catch (err) {
-    console.error('runScan error:', err)
+    console.error('runScan:', err)
   } finally {
-    setThinking(false)
+    state.isThinking = false
+    if (!state.pendingNudge) setCreatureState('idle')
   }
+}
+
+function setPendingNudge (categoryId, severity, snippet = null) {
+  if (state.session.resolvedCategories?.includes(categoryId)) return
+  state.pendingNudge = categoryId
+  state.pendingNudgeSnippet = snippet
+  setCreatureState('nudge')
+  bumpNudgeCount(severity)
+  // Auto-open nudge bubble after a brief bounce animation
+  setTimeout(() => {
+    if (state.pendingNudge === categoryId && !state.bubbleOpen) {
+      openNudgeBubble(categoryId)
+    }
+  }, 700)
+}
+
+// ─── Snippet extraction ───────────────────────────────────────────────────────
+
+function extractTriggerSnippet (text, cat) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 3)
+
+  // Find the most relevant line by keyword match
+  for (const kw of (cat.triggers.keywords || [])) {
+    const line = lines.find(l => l.toLowerCase().includes(kw.toLowerCase()))
+    if (line) return line.slice(0, 120)
+  }
+
+  // Fall back to regex pattern match
+  for (const pattern of (cat.triggers.code_patterns || [])) {
+    try {
+      const match = text.match(new RegExp(pattern, 'im'))
+      if (match) return match[0].trim().split('\n')[0].slice(0, 120)
+    } catch {}
+  }
+
+  // Last resort: first non-trivial line of the text
+  return lines[0]?.slice(0, 120) || null
 }
 
 // ─── Trigger detection ────────────────────────────────────────────────────────
@@ -396,57 +661,32 @@ function detectTriggeredCategories (text) {
 
   state.blindspots.categories?.forEach(cat => {
     if (state.session.resolvedCategories?.includes(cat.id)) return
-    if (state.nudgeCards.find(c => c.categoryId === cat.id)) return
-
     let score = 0
-
-    // Keyword matches
-    cat.triggers.keywords?.forEach(kw => {
-      if (lower.includes(kw.toLowerCase())) score += 2
+    cat.triggers.keywords?.forEach(kw => { if (lower.includes(kw.toLowerCase())) score += 2 })
+    cat.triggers.code_patterns?.forEach(p => {
+      try { if (new RegExp(p, 'i').test(text)) score += 3 } catch {}
     })
-
-    // Code pattern matches (regex)
-    cat.triggers.code_patterns?.forEach(pattern => {
-      try {
-        if (new RegExp(pattern, 'i').test(text)) score += 3
-      } catch { }
-    })
-
-    // Regex absent checks — fire if pattern NOT found (suggesting it's missing)
-    // We flag absence only if there's a positive keyword/code match first
     if (score > 0) {
-      cat.triggers.regex_absent?.forEach(pattern => {
-        try {
-          if (!new RegExp(pattern, 'i').test(text)) score += 1
-        } catch { }
+      cat.triggers.regex_absent?.forEach(p => {
+        try { if (!new RegExp(p, 'i').test(text)) score += 1 } catch {}
       })
     }
-
-    if (score >= 2) {
-      triggered.push({ ...cat, score })
-    }
+    if (score >= 2) triggered.push({ ...cat, score })
   })
 
-  // Sort: critical first, then by score
   return triggered.sort((a, b) => {
-    const severityOrder = { critical: 4, high: 3, medium: 2, low: 1 }
-    const sa = severityOrder[a.severity] || 0
-    const sb = severityOrder[b.severity] || 0
-    if (sa !== sb) return sb - sa
-    return b.score - a.score
+    const ord = { critical: 4, high: 3, medium: 2, low: 1 }
+    const d = (ord[b.severity] || 0) - (ord[a.severity] || 0)
+    return d !== 0 ? d : b.score - a.score
   })
 }
 
 function pickBestNudge (triggered) {
   const caps = state.blindspots.nudge_timing?.max_nudges_per_session_by_severity || {}
-
   for (const cat of triggered) {
     const sev = cat.severity
-    const count = state.session.nudgeCount?.[sev] || 0
-
-    // Critical is always exempt from cap
     if (sev === 'critical') return cat
-
+    const count = state.session.nudgeCount?.[sev] || 0
     const cap = typeof caps[sev] === 'number' ? caps[sev] : 99
     if (count < cap) return cat
   }
@@ -458,246 +698,41 @@ function bumpNudgeCount (severity) {
   state.session.nudgeCount[severity] = (state.session.nudgeCount[severity] || 0) + 1
 }
 
-// ─── Soft scan via Claude ─────────────────────────────────────────────────────
+// ─── LLM soft scan ────────────────────────────────────────────────────────────
 
 async function claudeSoftScan (text) {
   const categoryNames = state.blindspots.categories
     ?.filter(c => !state.session.resolvedCategories?.includes(c.id))
-    .map(c => `${c.id}: ${c.name}`)
-    .join('\n') || ''
-
-  const systemPrompt = buildSystemPrompt()
-  const userMessage = `The user just pasted this text into their session:
-
----
-${text.slice(0, 1500)}
----
-
-Available blindspot categories (id: name):
-${categoryNames}
-
-Does this text trigger any of these blindspot categories? 
-Reply with ONLY a JSON object: { "triggered": "<category_id or null>", "reason": "<one sentence>" }
-If nothing is triggered, return { "triggered": null, "reason": "" }`
+    .map(c => `${c.id}: ${c.name}`).join('\n') || ''
 
   const result = await window.nano.chat({
-    messages: [{ role: 'user', content: userMessage }],
-    systemPrompt
+    messages: [{
+      role: 'user',
+      content: `Text:\n---\n${text.slice(0, 1500)}\n---\n\nCategories:\n${categoryNames}\n\nReply ONLY with JSON: { "triggered": "<id or null>", "reason": "<one sentence>" }`
+    }],
+    systemPrompt: buildSystemPrompt()
   })
 
   if (result.error || !result.content) return
-
   try {
-    const cleaned = result.content.replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(cleaned)
+    const parsed = JSON.parse(result.content.replace(/```json|```/g, '').trim())
     if (parsed.triggered && parsed.triggered !== 'null') {
       const cat = getCategoryById(parsed.triggered)
-      if (cat && !state.nudgeCards.find(c => c.categoryId === cat.id)) {
-        addNudgeToFeed(cat.id, cat.severity)
-        bumpNudgeCount(cat.severity)
-      }
+      if (cat) setPendingNudge(cat.id, cat.severity, parsed.reason || extractTriggerSnippet(text, cat))
     }
-  } catch { }
+  } catch {}
 }
 
 // ─── Session summarization ────────────────────────────────────────────────────
 
 async function summarizeSession () {
-  const recentExchanges = state.session.exchanges.slice(-10)
-    .map(e => e.content.slice(0, 200))
-    .join('\n---\n')
-
-  const summaryPrompt = state.blindspots.session_summarization?.summary_prompt || ''
-
-  const result = await window.nano.chat({
-    messages: [{ role: 'user', content: `${summaryPrompt}\n\nRecent session content:\n${recentExchanges}` }],
-    systemPrompt: 'You summarize developer sessions concisely. Output only the 3-bullet summary, nothing else.'
+  const recent = state.session.exchanges.slice(-10).map(e => e.content.slice(0, 200)).join('\n---\n')
+  const prompt  = state.blindspots.session_summarization?.summary_prompt || ''
+  const result  = await window.nano.chat({
+    messages: [{ role: 'user', content: `${prompt}\n\nRecent session:\n${recent}` }],
+    systemPrompt: 'Summarize developer sessions concisely. Output only 3 bullets.'
   })
-
-  if (result.content) {
-    state.session.summary = result.content
-  }
-}
-
-// ─── Nudge detail screen ──────────────────────────────────────────────────────
-
-function openNudgeDetail (categoryId) {
-  const cat = getCategoryById(categoryId)
-  if (!cat) return
-
-  state.activeNudgeId = categoryId
-  state.exchangeCount = 0
-
-  // Set title
-  const titleEl = $('nudge-detail-title')
-  if (titleEl) titleEl.textContent = cat.name
-
-  // Render explanation
-  const body = $('nudge-detail-body')
-  if (body) {
-    const opts = cat.explanation.options?.map(o => `
-      <div class="option-item">
-        <div class="option-label">${o.label}</div>
-        <div class="option-solution">${o.solution}</div>
-      </div>
-    `).join('') || ''
-
-    body.innerHTML = `
-      <p class="nudge-detail-question">${cat.nudge}</p>
-      <div class="nudge-detail-plain">${cat.explanation.plain}</div>
-      <p class="nudge-detail-analogy">"${cat.explanation.analogy}"</p>
-      <div class="options-list">${opts}</div>
-      <div class="follow-up-question">💬 ${cat.explanation.follow_up_question}</div>
-    `
-  }
-
-  // Render chat area — first state: reply input open
-  renderChatArea(cat, 'awaiting_reply')
-
-  showScreen('nudge')
-}
-
-function renderChatArea (cat, phase) {
-  const area = $('nudge-chat-area')
-  if (!area) return
-  area.innerHTML = ''
-
-  if (phase === 'awaiting_reply') {
-    const row = document.createElement('div')
-    row.className = 'chat-reply-row'
-    row.innerHTML = `
-      <input type="text" class="chat-reply-input" id="chat-reply-input" placeholder="Reply to continue..." />
-      <button class="btn-reply" id="btn-send-reply">Send</button>
-    `
-    area.appendChild(row)
-
-    const sendFn = () => handleUserReply(cat)
-    $('btn-send-reply')?.addEventListener('click', sendFn)
-    $('chat-reply-input')?.addEventListener('keydown', e => {
-      if (e.key === 'Enter') sendFn()
-    })
-    setTimeout(() => $('chat-reply-input')?.focus(), 100)
-  }
-
-  if (phase === 'handoff') {
-    const prompt = buildHandoffPrompt(cat)
-
-    const box = document.createElement('div')
-    box.innerHTML = `
-      <div class="handoff-box">
-        <div class="handoff-header">
-          <span class="handoff-label">📋 Take this to your main chat</span>
-          <button class="btn-copy" id="btn-copy-handoff">Copy</button>
-        </div>
-        <div class="handoff-prompt" id="handoff-prompt-text">${prompt}</div>
-      </div>
-      <p class="watching-line">I'll keep watching.</p>
-    `
-    area.appendChild(box)
-
-    $('btn-copy-handoff')?.addEventListener('click', () => {
-      navigator.clipboard.writeText(prompt)
-      $('btn-copy-handoff').textContent = 'Copied!'
-      setTimeout(() => {
-        if ($('btn-copy-handoff')) $('btn-copy-handoff').textContent = 'Copy'
-      }, 2000)
-    })
-  }
-}
-
-// ─── User reply handling ──────────────────────────────────────────────────────
-
-async function handleUserReply (cat) {
-  const input = $('chat-reply-input')
-  const userText = input?.value.trim()
-  if (!userText || state.isThinking) return
-
-  state.exchangeCount++
-  setThinking(true)
-
-  // Show the user's reply in the chat area
-  const area = $('nudge-chat-area')
-  const replyEl = document.createElement('div')
-  replyEl.className = 'chat-exchange'
-  replyEl.style.color = 'var(--text-primary)'
-  replyEl.textContent = userText
-  area.innerHTML = ''
-  area.appendChild(replyEl)
-
-  // Add thinking indicator
-  const thinking = document.createElement('div')
-  thinking.className = 'chat-exchange'
-  thinking.innerHTML = `<div class="thinking-dots"><span></span><span></span><span></span></div>`
-  area.appendChild(thinking)
-
-  // Build the context-rich prompt for Nano's response
-  const systemPrompt = buildSystemPrompt()
-  const messages = [
-    {
-      role: 'user',
-      content: buildNudgeContext(cat) + `\n\nThe user replied: "${userText}"\n\nThis is exchange ${state.exchangeCount} of maximum 2. ${state.exchangeCount >= 2 ? 'This is the FINAL exchange — you MUST generate a handoff prompt after your brief reply.' : 'Give a brief, grounded response and ask your one follow-up question.'}`
-    }
-  ]
-
-  const result = await window.nano.chat({ messages, systemPrompt })
-  thinking.remove()
-
-  if (result.error) {
-    const errEl = document.createElement('div')
-    errEl.className = 'chat-exchange'
-    errEl.style.color = 'var(--danger)'
-    errEl.textContent = 'Could not reach Claude API. Check your connection and API key.'
-    area.appendChild(errEl)
-    setThinking(false)
-    return
-  }
-
-  // Show Nano's response
-  const responseEl = document.createElement('div')
-  responseEl.className = 'chat-exchange'
-  responseEl.style.color = 'var(--text-secondary)'
-  responseEl.textContent = result.content
-  area.appendChild(responseEl)
-
-  // Log exchange to session
-  state.session.exchanges.push({
-    role: 'assistant',
-    content: result.content,
-    categoryId: cat.id,
-    timestamp: Date.now()
-  })
-
-  setThinking(false)
-
-  // After exchange 2, always go to handoff
-  if (state.exchangeCount >= 2) {
-    setTimeout(() => renderChatArea(cat, 'handoff'), 600)
-    // Mark as resolved in session
-    if (!state.session.resolvedCategories) state.session.resolvedCategories = []
-    if (!state.session.resolvedCategories.includes(cat.id)) {
-      state.session.resolvedCategories.push(cat.id)
-    }
-    markNudgeResolved(cat.id)
-  } else {
-    // Still in first exchange — keep reply input open
-    const row = document.createElement('div')
-    row.className = 'chat-reply-row'
-    row.style.marginTop = '8px'
-    row.innerHTML = `
-      <input type="text" class="chat-reply-input" id="chat-reply-input" placeholder="Reply..." />
-      <button class="btn-reply" id="btn-send-reply">Send</button>
-    `
-    area.appendChild(row)
-
-    const sendFn = () => handleUserReply(cat)
-    $('btn-send-reply')?.addEventListener('click', sendFn)
-    $('chat-reply-input')?.addEventListener('keydown', e => {
-      if (e.key === 'Enter') sendFn()
-    })
-    setTimeout(() => $('chat-reply-input')?.focus(), 100)
-  }
-
-  await window.nano.saveSession(state.session)
+  if (result.content) state.session.summary = result.content
 }
 
 // ─── Prompt builders ──────────────────────────────────────────────────────────
@@ -709,39 +744,22 @@ function buildSystemPrompt () {
     ...(state.blindspots.system_prompt?.hard_rules || []),
     ...(state.blindspots.system_prompt?.handoff_rules || [])
   ].join('\n- ')
-
   const skillLabel = {
-    novice: 'not a developer — avoid all jargon and use plain language and analogies',
+    novice: 'not a developer — avoid all jargon, use plain language and analogies',
     some:   'has some coding experience but is not a professional developer',
-    dev:    'is a developer but may lack production app experience'
+    dev:    'is a developer but may lack production experience'
   }[state.config.skillLevel] || 'not a developer'
-
-  return `${persona}
-
-The user ${skillLabel}.
-
-Rules:
-- ${rules}
-
-Project context: ${state.config.projectDescription || 'unknown project'}
-Session summary: ${state.session.summary || 'Session just started.'}`
+  return `${persona}\n\nUser ${skillLabel}.\n\nRules:\n- ${rules}\n\nProject: ${state.config.projectDescription || 'unknown'}\nSession: ${state.session.summary || 'just started'}`
 }
 
 function buildNudgeContext (cat) {
-  return `Blindspot category: ${cat.name}
-Nudge shown to user: "${cat.nudge}"
-Plain explanation given: "${cat.explanation.plain}"
-Analogy used: "${cat.explanation.analogy}"
-Follow-up question asked: "${cat.explanation.follow_up_question}"
-Project: ${state.config.projectDescription}`
+  return `Category: ${cat.name}\nNudge: "${cat.nudge}"\nExplanation: "${cat.explanation.plain}"\nAnalogy: "${cat.explanation.analogy}"\nFollowup: "${cat.explanation.follow_up_question}"\nProject: ${state.config.projectDescription}`
 }
 
 function buildHandoffPrompt (cat) {
   let template = cat.handoff_prompt_template || ''
   const vars = cat.template_variables || {}
-
-  // Fill template variables from session context and config
-  const context = {
+  const ctx = {
     project:             state.config.projectDescription || 'my app',
     data_type:           state.session.detectedDataType  || 'my data',
     use_case:            state.session.lastUserReply     || 'I can access it next time',
@@ -757,17 +775,10 @@ function buildHandoffPrompt (cat) {
     data_collected:      state.session.detectedSensitiveData || 'personal information',
     button_name:         'submit'
   }
-
-  // Replace placeholders, falling back to template_variable fallbacks
-  template = template.replace(/\{(\w+)\}/g, (_, key) => {
-    return context[key] || vars[key]?.fallback || key
-  })
-
-  // Append novice tag
+  template = template.replace(/\{(\w+)\}/g, (_, key) => ctx[key] || vars[key]?.fallback || key)
   if (state.config.skillLevel === 'novice' && !template.includes('not a developer')) {
     template += ' I am not a developer — please explain as you go.'
   }
-
   return template
 }
 
@@ -777,52 +788,15 @@ function getCategoryById (id) {
   return state.blindspots.categories?.find(c => c.id === id) || null
 }
 
-function setThinking (on) {
-  state.isThinking = on
-  const avatar = $('avatar-main')
-  const btn = $('btn-scan')
-  if (avatar) avatar.classList.toggle('thinking', on)
-  if (btn) btn.disabled = on
-  setStatus(on ? 'Thinking...' : 'Watching...', on ? 'thinking' : '')
-}
-
-// ─── Boot ─────────────────────────────────────────────────────────────────────
-
-
 // ─── Auto-updater UI ──────────────────────────────────────────────────────────
 
 function initUpdaterUI () {
   if (!window.updater) return
-
-  window.updater.onUpdateAvailable((info) => {
-    console.log('Update available:', info.version)
-  })
-
   window.updater.onUpdateDownloaded(() => {
-    const feed = document.getElementById('nudge-feed')
-    if (!feed) return
-
-    const banner = document.createElement('div')
-    banner.style.cssText = `
-      background: #1a2a1a; border: 0.5px solid #2a4a2a; border-radius: 8px;
-      padding: 10px 14px; display: flex; align-items: center;
-      justify-content: space-between; gap: 10px; animation: slide-in 0.25s ease;
-    `
-    banner.innerHTML = `
-      <span style="font-size:12px; color:#6ec99a;">
-        NanoBot update ready — restart to install
-      </span>
-      <button onclick="window.updater.installUpdate()" style="
-        background:#1d4a1d; border:0.5px solid #2a6a2a; border-radius:4px;
-        color:#6ec99a; font-size:11px; font-family:monospace;
-        padding:4px 10px; cursor:pointer; white-space:nowrap;
-      ">Restart now</button>
-    `
-    feed.prepend(banner)
+    state.updateReady = true
   })
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  init()
-  initUpdaterUI()
-})
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => init())
