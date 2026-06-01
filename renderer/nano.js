@@ -49,6 +49,7 @@ async function init () {
     applyConfig()
     showScreen('main')
     renderFeed()
+    await requestTerminalWatch()
   } else {
     showScreen('onboarding')
   }
