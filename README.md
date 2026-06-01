@@ -2,11 +2,11 @@
 
 A floating desktop companion that watches your Claude/Codex sessions and surfaces the blindspots that novice builders don't know to ask about.
 
-Buddy never writes code. It asks the one question you didn't know you needed to ask — then hands you a ready-to-paste prompt to take back to your main chat.
+Nano Bot never writes code. It asks the one question you didn't know you needed to ask — then hands you a ready-to-paste prompt to take back to your main chat.
 
 ---
 
-## What Buddy does
+## What Nano Bot does
 
 - **Scans your prompts and code** for missing pieces you haven't thought about yet
 - **Surfaces one nudge at a time** — data storage, auth, destructive commands, API costs, legal requirements, and more
