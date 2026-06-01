@@ -11,9 +11,6 @@
 </head>
 <body>
 
-  <!-- Drag handle — invisible bar at top for window dragging -->
-  <div id="drag-handle" class="drag-handle"></div>
-
   <!-- ── Onboarding screen ── -->
   <div id="screen-onboarding" class="screen active">
     <div class="onboarding-wrap">
@@ -58,6 +55,15 @@
 
   <!-- ── Main companion screen ── -->
   <div id="screen-main" class="screen">
+
+    <!-- Accessibility permission banner (shown once if not granted) -->
+    <div id="accessibility-banner" class="permission-banner" style="display:none">
+      <span>👁 Allow terminal watching in <strong>System Settings → Privacy → Accessibility</strong></span>
+      <div class="permission-banner-actions">
+        <button id="btn-grant-access" class="btn-banner-primary">Open Settings</button>
+        <button id="btn-dismiss-access" class="btn-banner-dismiss">Skip</button>
+      </div>
+    </div>
 
     <!-- Header -->
     <div class="header">

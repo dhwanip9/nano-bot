@@ -219,13 +219,21 @@ async function requestTerminalWatch () {
     setStatus('Watching terminal...')
     return
   }
-  // Calling requestAccessibility with prompt=true makes macOS show its
-  // permission dialog and adds the app to the Accessibility list automatically
-  await window.nano.requestAccessibility()
-  // After granting, user needs to restart the app for it to take effect
-  alert(
-    'Almost there! After enabling NanoBot in Accessibility settings, restart the app once and it will start watching your terminal automatically.'
-  )
+
+  // Show inline banner instead of blocking alert
+  const banner = $('accessibility-banner')
+  if (banner) banner.style.display = 'block'
+
+  $('btn-grant-access')?.addEventListener('click', async () => {
+    await window.nano.requestAccessibility()
+    window.nano.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility')
+    if (banner) banner.style.display = 'none'
+    setStatus('Restart app after granting access')
+  })
+
+  $('btn-dismiss-access')?.addEventListener('click', () => {
+    if (banner) banner.style.display = 'none'
+  })
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
@@ -352,31 +360,31 @@ async function runScan (text, source) {
   if (state.isThinking) return
   setThinking(true)
 
-  // Log to session exchanges
-  state.session.exchanges.push({ role: 'user', content: text, source, timestamp: Date.now() })
+  try {
+    state.session.exchanges.push({ role: 'user', content: text, source, timestamp: Date.now() })
 
-  // Build the scan prompt
-  const triggered = detectTriggeredCategories(text)
+    const triggered = detectTriggeredCategories(text)
 
-  if (triggered.length === 0) {
-    // Ask Claude to do a softer scan
-    await claudeSoftScan(text)
-  } else {
-    // Surface the highest priority one not already shown or resolved
-    const toNudge = pickBestNudge(triggered)
-    if (toNudge) {
-      addNudgeToFeed(toNudge.id, toNudge.severity)
-      bumpNudgeCount(toNudge.severity)
+    if (triggered.length === 0) {
+      await claudeSoftScan(text)
+    } else {
+      const toNudge = pickBestNudge(triggered)
+      if (toNudge) {
+        addNudgeToFeed(toNudge.id, toNudge.severity)
+        bumpNudgeCount(toNudge.severity)
+      }
     }
-  }
 
-  // Periodically summarize session
-  if (state.session.exchanges.length > 0 && state.session.exchanges.length % 5 === 0) {
-    await summarizeSession()
-  }
+    if (state.session.exchanges.length % 5 === 0) {
+      await summarizeSession()
+    }
 
-  await window.nano.saveSession(state.session)
-  setThinking(false)
+    await window.nano.saveSession(state.session)
+  } catch (err) {
+    console.error('runScan error:', err)
+  } finally {
+    setThinking(false)
+  }
 }
 
 // ─── Trigger detection ────────────────────────────────────────────────────────
