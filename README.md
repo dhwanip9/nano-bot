@@ -1,18 +1,18 @@
-# Nano Bot 🤖
+# NanoBot
 
-A floating desktop companion that watches your Claude/Codex sessions and surfaces the blindspots that novice builders don't know to ask about.
+A floating desktop companion that watches your Claude Code and Codex CLI sessions and surfaces the blindspots that novice builders don't know to ask about.
 
-Nano Bot never writes code. It asks the one question you didn't know you needed to ask — then hands you a ready-to-paste prompt to take back to your main chat.
+Nano never writes code. It asks the one question you didn't know you needed to ask — then hands you a ready-to-paste prompt to take back to your main chat.
 
 ---
 
-## What Nano Bot does
+## What Nano does
 
-- **Scans your prompts and code** for missing pieces you haven't thought about yet
+- **Watches your Claude Code and Codex terminal** automatically — no copy-pasting required
 - **Surfaces one nudge at a time** — data storage, auth, destructive commands, API costs, legal requirements, and more
 - **Explains in plain language** — no jargon, one analogy, one question
 - **Generates a handoff prompt** you can copy and paste directly into Claude or ChatGPT to fix the issue
-- **Watches your clipboard** (optional) so you don't have to paste anything manually
+- **Watches your clipboard** (optional) for manual scanning
 
 ---
 
@@ -20,58 +20,65 @@ Nano Bot never writes code. It asks the one question you didn't know you needed 
 
 ### Step 1 — Download
 
-Go to the [Releases page](https://github.com/your-repo/claude-buddy/releases) and download:
-- **Mac**: `Claude-Buddy-mac.dmg`
-- **Windows**: `Claude-Buddy-Setup.exe`
-- **Linux**: `Claude-Buddy.AppImage`
+Go to the [Releases page](https://github.com/dhwanip9/nano-bot/releases) and download:
+- **Mac**: `NanoBot-arm64.dmg` (Apple Silicon) or `NanoBot.dmg` (Intel)
+- **Windows**: `NanoBot-Setup.exe`
+- **Linux**: `NanoBot.AppImage`
 
 ### Step 2 — Install
 
-**Mac**: Open the `.dmg` file, drag Claude Buddy into your Applications folder, double-click to open.
-> If Mac says "can't be opened because it's from an unidentified developer": right-click the app → Open → Open anyway.
+**Mac**: Open the `.dmg` file, drag NanoBot into your Applications folder, double-click to open.
+> If Mac says "can't be opened because it's from an unidentified developer": run this once in Terminal:
+> `xattr -cr /Applications/NanoBot.app`
 
-**Windows**: Run the `.exe` installer and follow the steps. Claude Buddy will start automatically.
+**Windows**: Run the `.exe` installer and follow the steps. NanoBot will start automatically.
 
-**Linux**: Make the AppImage executable (`chmod +x Claude-Buddy.AppImage`) then double-click to run.
+**Linux**: Make the AppImage executable (`chmod +x NanoBot.AppImage`) then double-click to run.
 
 ### Step 3 — Get your API key (one time, ~3 minutes)
 
-Buddy uses the Anthropic API directly — this is separate from your Claude.ai account.
+NanoBot uses the Anthropic API directly — this is separate from your Claude.ai account.
 
 1. Go to [console.anthropic.com](https://console.anthropic.com)
 2. Create a free account if you don't have one
 3. Click **API Keys** in the left sidebar
-4. Click **Create Key**, give it a name like "Claude Buddy"
+4. Click **Create Key**, give it a name like "NanoBot"
 5. Copy the key (it starts with `sk-ant-`)
 
-**Cost**: Buddy uses tiny amounts of API tokens. A full day of heavy use costs under $0.10. Set a spending cap at `console.anthropic.com → Billing → Usage limits` just in case.
+**Cost**: Nano uses tiny amounts of API tokens. A full day of heavy use costs under $0.10. Set a spending cap at `console.anthropic.com → Billing → Usage limits` just in case.
 
 ### Step 4 — First launch
 
-When Buddy opens, you'll see three fields:
+When NanoBot opens, you'll see three fields:
 
 1. **API key** — paste the key you just copied
-2. **What are you building?** — describe your project in plain language. The more detail, the better Buddy's nudges will be.
-3. **Your experience** — pick honestly; this affects how Buddy explains things
+2. **What are you building?** — describe your project in plain language. The more detail, the better Nano's nudges will be.
+3. **Your experience** — pick honestly; this affects how Nano explains things
 
 Click **Start watching →**
+
+### Step 5 — Grant terminal access (one time)
+
+NanoBot will ask for Accessibility permission so it can watch your Claude Code and Codex terminal sessions automatically. Click OK when prompted and enable NanoBot in System Settings → Privacy → Accessibility.
+
+Restart the app once after granting permission — Nano will start watching your terminal from then on.
 
 ---
 
 ## How to use it
 
-**Option A — Paste to scan (recommended)**
-Copy your prompt or Claude's response, paste it into Buddy's scan box, click Scan. Buddy will flag anything worth thinking about.
+**Auto-watch (default)**
+Open a terminal and run `claude` or `codex` as normal. NanoBot watches in the background and surfaces a nudge when it spots something worth thinking about. No extra steps.
 
-**Option B — Auto-watch clipboard**
-Toggle "Auto-watch clipboard" and Buddy will scan automatically every time you copy something new. No extra steps.
+**Manual scan (optional)**
+Copy any text and paste it into NanoBot's scan box, or toggle "Auto-watch clipboard" to scan automatically when you copy something new.
 
 **When a nudge appears:**
 - Tap it to open the explanation
 - Read the plain-language breakdown and options
-- Reply to Buddy's follow-up question if you want more context
-- After one exchange, Buddy generates a **copy-paste prompt** you take back to your main Claude or ChatGPT chat
-- Buddy marks that concern resolved and goes back to watching
+- Reply to Nano's follow-up question if you want more context
+- After one exchange, Nano generates a **copy-paste prompt** you take back to your main Claude or ChatGPT chat
+- Nano marks that concern resolved and goes back to watching
 
 ---
 
@@ -79,8 +86,8 @@ Toggle "Auto-watch clipboard" and Buddy will scan automatically every time you c
 
 ```bash
 # Prerequisites: Node.js 18+
-git clone https://github.com/your-repo/claude-buddy.git
-cd claude-buddy
+git clone https://github.com/dhwanip9/nano-bot.git
+cd nano-bot
 npm install
 npm start
 ```
@@ -94,18 +101,18 @@ npm run build:linux  # Linux AppImage + deb
 
 ---
 
-## Where Buddy stores data
+## Where Nano stores data
 
 Everything stays on your machine:
-- Config (API key, project description): `~/.claude-buddy/config.json`
-- Session memory: `~/.claude-buddy/session.json`
+- Config (API key, project description): `~/.nano-bot/config.json`
+- Session memory: `~/.nano-bot/session.json`
 - Blindspot knowledge base: bundled with the app
 
-Buddy never sends your data anywhere except directly to Anthropic's API when you trigger a scan. Your Claude.ai login is never accessed or required.
+Nano never sends your data anywhere except directly to Anthropic's API when it scans. Your Claude.ai login is never accessed or required.
 
 ---
 
-## The blindspot categories Buddy watches for
+## The blindspot categories Nano watches for
 
 | Category | Severity | What it catches |
 |---|---|---|
