@@ -15,6 +15,7 @@ const state = {
   bubbleMode:       null,   // 'onboarding' | 'idle' | 'nudge' | 'settings'
   pendingNudge:        null,   // category id waiting for user
   pendingNudgeSnippet: null,   // excerpt that triggered the nudge
+  pendingNudgeSource:  null,   // 'terminal' | 'clipboard' | 'manual' | 'heartbeat'
   activeNudge:             null,   // category id currently in bubble
   activeNudgeExplanation:  null,   // Claude-generated explanation for current nudge
   exchangeCount:    0,
@@ -59,12 +60,22 @@ async function openBubble (html) {
 }
 
 async function closeBubble () {
+  // If dismissing a nudge early, still mark it seen so it doesn't loop
+  if (state.activeNudge) {
+    if (!state.session.resolvedCategories) state.session.resolvedCategories = []
+    if (!state.session.resolvedCategories.includes(state.activeNudge.id)) {
+      state.session.resolvedCategories.push(state.activeNudge.id)
+      await window.nano.saveSession(state.session)
+    }
+  }
   const bubble = $('bubble')
   if (bubble) bubble.classList.add('hidden')
   const body = $('bubble-body')
   if (body) body.innerHTML = ''
   state.bubbleOpen = false
   state.bubbleMode = null
+  state.activeNudge = null
+  state.activeNudgeExplanation = null
   await window.nano.resizeWindow({ width: CREATURE_H, height: CREATURE_H })
 }
 
@@ -350,13 +361,24 @@ async function openNudgeBubble (categoryId) {
   state.activeNudge = cat
   state.exchangeCount = 0
   const snippet = state.pendingNudgeSnippet
+  const source  = state.pendingNudgeSource
   state.pendingNudge        = null
   state.pendingNudgeSnippet = null
+  state.pendingNudgeSource  = null
   setCreatureState('idle')
+
+  const sourceLabels = {
+    terminal:            'Terminal',
+    clipboard:           'Clipboard',
+    manual:              'Manual paste',
+    heartbeat:           'Session context',
+    project_description: 'Project description'
+  }
+  const sourceLabel = sourceLabels[source] || source || 'scan'
 
   const snippetHtml = snippet ? `
     <div class="nudge-snippet">
-      <span class="nudge-snippet-label">spotted</span>
+      <span class="nudge-snippet-label">spotted in ${sourceLabel}</span>
       <code class="nudge-snippet-text">${snippet.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>
     </div>` : ''
 
@@ -600,10 +622,10 @@ async function runScan (text, source) {
     const triggered = detectTriggeredCategories(text)
 
     if (triggered.length === 0) {
-      await claudeSoftScan(text)
+      await claudeSoftScan(text, source)
     } else {
       const best = pickBestNudge(triggered)
-      if (best) setPendingNudge(best.id, best.severity, extractTriggerSnippet(text, best))
+      if (best) setPendingNudge(best.id, best.severity, extractTriggerSnippet(text, best), source)
     }
 
     if (state.session.exchanges.length % 5 === 0) await summarizeSession()
@@ -616,10 +638,11 @@ async function runScan (text, source) {
   }
 }
 
-function setPendingNudge (categoryId, severity, snippet = null) {
+function setPendingNudge (categoryId, severity, snippet = null, source = null) {
   if (state.session.resolvedCategories?.includes(categoryId)) return
   state.pendingNudge = categoryId
   state.pendingNudgeSnippet = snippet
+  state.pendingNudgeSource = source
   setCreatureState('nudge')
   bumpNudgeCount(severity)
   // Auto-open nudge bubble after a brief bounce animation
@@ -700,7 +723,7 @@ function bumpNudgeCount (severity) {
 
 // ─── LLM soft scan ────────────────────────────────────────────────────────────
 
-async function claudeSoftScan (text) {
+async function claudeSoftScan (text, source = null) {
   const categoryNames = state.blindspots.categories
     ?.filter(c => !state.session.resolvedCategories?.includes(c.id))
     .map(c => `${c.id}: ${c.name}`).join('\n') || ''
@@ -718,7 +741,7 @@ async function claudeSoftScan (text) {
     const parsed = JSON.parse(result.content.replace(/```json|```/g, '').trim())
     if (parsed.triggered && parsed.triggered !== 'null') {
       const cat = getCategoryById(parsed.triggered)
-      if (cat) setPendingNudge(cat.id, cat.severity, parsed.reason || extractTriggerSnippet(text, cat))
+      if (cat) setPendingNudge(cat.id, cat.severity, parsed.reason || extractTriggerSnippet(text, cat), source)
     }
   } catch {}
 }

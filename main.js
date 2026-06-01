@@ -141,13 +141,11 @@ function createWindow () {
 // ─── Tray ─────────────────────────────────────────────────────────────────────
 
 function createTray () {
-  // Use a simple template image; in production this would be a real icon file
-  const iconPath = path.join(__dirname, 'assets', 'tray-icon.png')
+  const iconPath = path.join(__dirname, 'assets', 'nanobot.png')
   let icon = fs.existsSync(iconPath)
     ? nativeImage.createFromPath(iconPath)
     : nativeImage.createEmpty()
-  icon = icon.resize({ width: 16, height: 16 })
-  icon.setTemplateImage(true)
+  icon = icon.resize({ width: 24, height: 24 })
 
   tray = new Tray(icon)
   tray.setToolTip('NanoBot')
@@ -414,8 +412,12 @@ app.whenReady().then(() => {
   loadConfig()
   loadBlindspots()
 
-  // On Mac, prevent dock icon (we live in the tray/floating window only)
-  if (process.platform === 'darwin') app.dock?.hide()
+  // On Mac, set app icon then hide dock (icon still shows in Accessibility settings etc.)
+  if (process.platform === 'darwin') {
+    const dockIcon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.icns'))
+    if (!dockIcon.isEmpty()) app.dock?.setIcon(dockIcon)
+    app.dock?.hide()
+  }
 
   createWindow()
   createTray()
